@@ -6,7 +6,7 @@ import os
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Dashboard Calidad - Tribu Food", page_icon="📊", layout="wide")
 
-# --- ESTILOS VISUALES: MODO OSCURO Y NEÓN (TRIBU FOOD) ---
+# --- ESTILOS VISUALES: MODO OSCURO, NEÓN Y BOTONES (PILLS) ---
 st.markdown("""
 <style>
 .stApp { background-color: #0a0e17; }
@@ -20,13 +20,34 @@ hr { border-bottom: 1px solid #ff6a00; box-shadow: 0px 0px 8px #ff6a00; }
 .stTabs [data-baseweb="tab-list"] { background-color: #0a0e17; }
 .stTabs [data-baseweb="tab"] { color: #00f3ff; font-weight: bold; }
 .stTabs [aria-selected="true"] { border-bottom: 2px solid #ff6a00; color: #ff6a00 !important; }
+
+/* ESTILOS PARA LOS BOTONES DE SEGMENTACIÓN (PILLS) */
+div[data-testid="stPills"] button,
+button[data-testid="stBaseButton-pills"] {
+    background-color: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+}
+div[data-testid="stPills"] button p,
+button[data-testid="stBaseButton-pills"] p {
+    color: #000000 !important;
+    font-weight: 600 !important;
+}
+/* Estado Seleccionado */
+div[data-testid="stPills"] button[aria-pressed="true"],
+button[data-testid="stBaseButton-pills"][aria-pressed="true"] {
+    background-color: #000000 !important;
+    border: 1px solid #555555 !important;
+}
+div[data-testid="stPills"] button[aria-pressed="true"] p,
+button[data-testid="stBaseButton-pills"][aria-pressed="true"] p {
+    color: #ffffff !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # --- ENCABEZADO CON LOGO Y TÍTULO ---
 col_logo, col_tit = st.columns([1, 10])
 with col_logo:
-    # Verifica si el logo existe para evitar errores
     if os.path.exists("LOGO.webp"):
         st.image("LOGO.webp", use_container_width=True)
 with col_tit:
@@ -43,7 +64,6 @@ def procesar_sfs(file):
         df = pd.read_excel(file)
         
         # 0. ELIMINAR DUPLICADOS DE FOLIOS (Incident Number)
-        # Mantiene solo el primer registro de cada folio para no inflar los KPIs
         if 'Incident Number' in df.columns:
             df = df.drop_duplicates(subset=['Incident Number'], keep='first')
         
@@ -86,13 +106,24 @@ if file_capa is not None:
     df = procesar_sfs(file_capa)
     
     if df is not None and not df.empty:
-        # Filtros Superiores
-        f1, f2, f3, f4 = st.columns(4)
-        filtro_origen = f1.multiselect("Origen", df['Origen_Clasificado'].unique(), default=df['Origen_Clasificado'].unique())
-        filtro_clase = f2.multiselect("Clasificación", df['Clasificacion_General'].unique(), default=df['Clasificacion_General'].unique())
-        filtro_estado = f3.multiselect("Estado", df['Estado_Simplificado'].unique(), default=df['Estado_Simplificado'].unique())
+        st.markdown("### 🔍 Filtros Generales (Si no seleccionas nada, se muestran todos)")
         
-        df_f = df[(df['Origen_Clasificado'].isin(filtro_origen)) & (df['Clasificacion_General'].isin(filtro_clase)) & (df['Estado_Simplificado'].isin(filtro_estado))]
+        # Filtros Superiores convertidos a Botones (Pills)
+        f1, f2, f3 = st.columns(3)
+        
+        # Se asume que si la lista está vacía (nada seleccionado), equivale a seleccionarlo todo
+        filtro_origen = f1.pills("Origen", options=df['Origen_Clasificado'].unique(), selection_mode="multi")
+        filtro_clase = f2.pills("Clasificación", options=df['Clasificacion_General'].unique(), selection_mode="multi")
+        filtro_estado = f3.pills("Estado", options=df['Estado_Simplificado'].unique(), selection_mode="multi")
+        
+        origen_val = filtro_origen if filtro_origen else df['Origen_Clasificado'].unique()
+        clase_val = filtro_clase if filtro_clase else df['Clasificacion_General'].unique()
+        estado_val = filtro_estado if filtro_estado else df['Estado_Simplificado'].unique()
+        
+        df_f = df[(df['Origen_Clasificado'].isin(origen_val)) & 
+                  (df['Clasificacion_General'].isin(clase_val)) & 
+                  (df['Estado_Simplificado'].isin(estado_val))]
+                  
         layout_oscuro = dict(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e2e8f0'))
 
         # --- PESTAÑAS ---
@@ -120,16 +151,11 @@ if file_capa is not None:
                 st.warning("No hay datos de clientes registrados con los filtros actuales.")
             else:
                 # --- BOTONES DE SEGMENTACIÓN EN CASCADA ---
-                st.markdown("#### 📅 Segmentación por Mes")
+                st.markdown("#### 📅 Segmentación por Mes (Si no seleccionas nada, se muestran todos)")
                 meses_unicos = df_cli[['Mes_Num', 'Mes']].drop_duplicates().sort_values('Mes_Num')['Mes'].tolist()
                 
-                # Función nativa de botones en Streamlit (Pills)
-                if hasattr(st, "pills"):
-                    meses_sel = st.pills("Selecciona uno o más meses (Si no seleccionas nada, se muestran todos):", options=meses_unicos, selection_mode="multi")
-                else:
-                    meses_sel = st.multiselect("Selecciona uno o más meses (Si no seleccionas nada, se muestran todos):", options=meses_unicos)
+                meses_sel = st.pills("Meses", options=meses_unicos, selection_mode="multi", label_visibility="collapsed")
                 
-                # Aplicar filtro en cascada solo si se seleccionó algún botón
                 if meses_sel:
                     df_cli = df_cli[df_cli['Mes'].isin(meses_sel)]
                 
