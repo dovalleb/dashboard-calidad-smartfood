@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os
 
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Dashboard CAPA - Smart Food Safe", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Dashboard Calidad - Tribu Food", page_icon="📊", layout="wide")
 
 # --- ESTILOS VISUALES: MODO OSCURO Y NEÓN (TRIBU FOOD) ---
 st.markdown("""
@@ -22,196 +23,14 @@ hr { border-bottom: 1px solid #ff6a00; box-shadow: 0px 0px 8px #ff6a00; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🛡️ Panel de Control - No Conformidades (CAPA)")
+# --- ENCABEZADO CON LOGO Y TÍTULO ---
+col_logo, col_tit = st.columns([1, 10])
+with col_logo:
+    # Verifica si el logo existe para evitar errores si cambia de nombre
+    if os.path.exists("LOGO.webp"):
+        st.image("LOGO.webp", use_column_width=True)
+with col_tit:
+    st.title("Dashboard Calidad - No conformidades")
 st.markdown("---")
 
 file_capa = st.file_uploader("📥 Arrastra aquí tu Excel 'Base Calidad' exportado desde SFS", type=['xlsx', 'xls'])
-
-@st.cache_data(show_spinner=False)
-def procesar_sfs(file):
-    try:
-        df = pd.read_excel(file)
-        
-        # 1. Fecha y Meses
-        meses_es = {1:'Enero', 2:'Febrero', 3:'Marzo', 4:'Abril', 5:'Mayo', 6:'Junio', 
-                    7:'Julio', 8:'Agosto', 9:'Septiembre', 10:'Octubre', 11:'Noviembre', 12:'Diciembre'}
-        if 'Fecha de Creación' in df.columns:
-            fechas_dt = pd.to_datetime(df['Fecha de Creación'], format='%d-%m-%Y', errors='coerce')
-            df['Fecha'] = fechas_dt.dt.date
-            df['Mes_Num'] = fechas_dt.dt.month
-            df['Mes'] = df['Mes_Num'].map(meses_es).fillna('Desconocido')
-        else:
-            df['Fecha'] = pd.NaT
-            df['Mes_Num'] = 99
-            df['Mes'] = 'Desconocido'
-
-        # 2. Entidad y Origen
-        df['Organización'] = df['Organización'].fillna('')
-        df['Nombre del Proveedor'] = df['Nombre del Proveedor'].fillna('')
-        
-        df['Entidad_Asociada'] = df.apply(lambda r: r['Nombre del Proveedor'] if r['Nombre del Proveedor']!='' else (r['Organización'] if r['Organización']!='' else 'Interno / Planta'), axis=1)
-        df['Origen_Clasificado'] = df.apply(lambda r: 'Proveedor' if r['Nombre del Proveedor']!='' else ('Cliente' if r['Organización']!='' else 'Interno'), axis=1)
-
-        # 3. Clasificación y Estados
-        col_tipo = 'Tipo de Incidente' if 'Tipo de Incidente' in df.columns else 'Categoría del Incidente'
-        df['Clasificacion_General'] = df[col_tipo].apply(lambda x: 'Inocuidad' if any(w in str(x).lower() for w in ['seguridad', 'inocuidad', 'microbiológica']) else 'Calidad')
-        df['Estado_Simplificado'] = df['Estado'].apply(lambda x: 'Cerrado' if 'Cerrado' in str(x) else 'Abierto')
-
-        # 4. Detalles
-        df['Producto_Afectado'] = df['Product Name'].fillna(df['Origin Type']).fillna('No Especificado')
-        df['Causa_Motivo'] = df['Subcategoría del Incidente'].fillna(df['Categoría del Incidente']).fillna('No Definido')
-
-        return df
-    except Exception as e:
-        st.error(f"Error procesando el archivo: {e}")
-        return None
-
-if file_capa is not None:
-    df = procesar_sfs(file_capa)
-    
-    if df is not None and not df.empty:
-        # Filtros Superiores
-        f1, f2, f3, f4 = st.columns(4)
-        filtro_origen = f1.multiselect("Origen", df['Origen_Clasificado'].unique(), default=df['Origen_Clasificado'].unique())
-        filtro_clase = f2.multiselect("Clasificación", df['Clasificacion_General'].unique(), default=df['Clasificacion_General'].unique())
-        filtro_estado = f3.multiselect("Estado", df['Estado_Simplificado'].unique(), default=df['Estado_Simplificado'].unique())
-        
-        df_f = df[(df['Origen_Clasificado'].isin(filtro_origen)) & (df['Clasificacion_General'].isin(filtro_clase)) & (df['Estado_Simplificado'].isin(filtro_estado))]
-        layout_oscuro = dict(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e2e8f0'))
-
-        # --- PESTAÑAS ---
-        tab_global, tab_clientes = st.tabs(["🌐 Visión Global", "👥 Análisis de Clientes (Reclamos)"])
-
-        # ==========================================
-        # PESTAÑA 1: VISIÓN GLOBAL (Resumen general)
-        # ==========================================
-        with tab_global:
-            st.markdown("### Resumen General Operativo")
-            k1, k2, k3 = st.columns(3)
-            k1.metric("Total de Hallazgos", len(df_f))
-            k2.metric("Eventos Calidad vs Inocuidad", f"{len(df_f[df_f['Clasificacion_General'] == 'Calidad'])} / {len(df_f[df_f['Clasificacion_General'] == 'Inocuidad'])}")
-            k3.metric("Tasa de Cierre", f"{(len(df_f[df_f['Estado_Simplificado'] == 'Cerrado'])/len(df_f)*100):.1f}%" if len(df_f)>0 else "0%")
-            
-            st.dataframe(df_f[['Incident Number', 'Fecha', 'Origen_Clasificado', 'Entidad_Asociada', 'Producto_Afectado', 'Causa_Motivo', 'Clasificacion_General', 'Estado_Simplificado']], use_container_width=True, hide_index=True)
-
-        # ==========================================
-        # PESTAÑA 2: ANÁLISIS DE CLIENTES
-        # ==========================================
-        with tab_clientes:
-            df_cli = df_f[df_f['Origen_Clasificado'] == 'Cliente']
-            
-            if df_cli.empty:
-                st.warning("No hay datos de clientes registrados con los filtros actuales.")
-            else:
-                total_cli = len(df_cli)
-
-                # --- 1. EVOLUCIÓN MENSUAL ---
-                st.markdown("#### 1. Cantidad de Reclamos por Mes")
-                df_mes = df_cli.groupby(['Mes_Num', 'Mes']).size().reset_index(name='Cantidad').sort_values('Mes_Num')
-                if not df_mes.empty:
-                    mes_peak = df_mes.loc[df_mes['Cantidad'].idxmax()]['Mes']
-                    peak_val = df_mes['Cantidad'].max()
-                    prom_mes = round(df_mes['Cantidad'].mean())
-                else:
-                    mes_peak, peak_val, prom_mes = "-", 0, 0
-                
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Total Reclamos", total_cli)
-                c2.metric("Mes Peak", mes_peak)
-                c3.metric("Peak Reclamos", peak_val)
-                c4.metric("Promedio / Mes", prom_mes)
-
-                fig_mes = px.bar(df_mes, x='Mes', y='Cantidad', text='Cantidad', color_discrete_sequence=['#00f3ff'])
-                fig_mes.update_traces(textposition='outside')
-                fig_mes.update_layout(**layout_oscuro, margin=dict(t=20, b=0))
-                st.plotly_chart(fig_mes, use_container_width=True)
-                st.markdown("---")
-
-                # --- 2. CLASIFICACIÓN (Calidad vs Inocuidad) ---
-                st.markdown("#### 2. Clasificación de Reclamos")
-                calidad_cli = len(df_cli[df_cli['Clasificacion_General'] == 'Calidad'])
-                inoc_cli = len(df_cli[df_cli['Clasificacion_General'] == 'Inocuidad'])
-                pct_calidad = (calidad_cli / total_cli * 100) if total_cli > 0 else 0
-                
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Total", total_cli)
-                c2.metric("Calidad", calidad_cli)
-                c3.metric("Inocuidad", inoc_cli)
-                c4.metric("% Calidad", f"{pct_calidad:.1f}%")
-
-                fig_class = px.pie(df_cli, names='Clasificacion_General', hole=0, color_discrete_sequence=['#00f3ff', '#ff6a00'])
-                fig_class.update_traces(textinfo='label+percent+value')
-                fig_class.update_layout(**layout_oscuro, margin=dict(t=20, b=0))
-                st.plotly_chart(fig_class, use_container_width=True)
-                st.markdown("---")
-
-                # --- 3. MOTIVOS DE RECLAMO ---
-                st.markdown("#### 3. Motivos de Reclamo")
-                df_mot = df_cli['Causa_Motivo'].value_counts().reset_index()
-                df_mot.columns = ['Motivo', 'Cantidad']
-                df_mot['%'] = (df_mot['Cantidad'] / total_cli) * 100
-                df_mot['Texto'] = df_mot['%'].apply(lambda x: f'{x:.1f}%')
-
-                prin_mot = df_mot.iloc[0]['Motivo'] if len(df_mot) > 0 else "-"
-                n_mot = len(df_mot)
-                sec_mot = df_mot.iloc[1]['Motivo'] if len(df_mot) > 1 else "-"
-                
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Total", total_cli)
-                c2.metric("Principal Motivo", prin_mot)
-                c3.metric("N° Motivos Distintos", n_mot)
-                c4.metric("2do Motivo", sec_mot)
-
-                fig_mot = px.bar(df_mot.sort_values('Cantidad', ascending=True), x='%', y='Motivo', text='Texto', orientation='h', color_discrete_sequence=['#00f3ff'])
-                fig_mot.update_traces(textposition='outside')
-                fig_mot.update_layout(**layout_oscuro, margin=dict(t=20, b=0), xaxis_title="% de Reclamos")
-                st.plotly_chart(fig_mot, use_container_width=True)
-                st.markdown("---")
-
-                # --- 4. PRODUCTOS RECLAMADOS ---
-                st.markdown("#### 4. Productos Reclamados")
-                df_prod = df_cli['Producto_Afectado'].value_counts().reset_index()
-                df_prod.columns = ['Producto', 'Cantidad']
-                df_prod['%'] = (df_prod['Cantidad'] / total_cli) * 100
-                df_prod['Texto'] = df_prod['%'].apply(lambda x: f'{x:.1f}%')
-
-                prin_prod = df_prod.iloc[0]['Producto'] if len(df_prod) > 0 else "-"
-                n_prod = len(df_prod)
-                sec_prod = df_prod.iloc[1]['Producto'] if len(df_prod) > 1 else "-"
-
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Total", total_cli)
-                c2.metric("Principal Producto", prin_prod)
-                c3.metric("N° Productos Distintos", n_prod)
-                c4.metric("2do Producto", sec_prod)
-
-                fig_prod = px.bar(df_prod.head(15).sort_values('Cantidad', ascending=True), x='%', y='Producto', text='Texto', orientation='h', color_discrete_sequence=['#ff6a00'])
-                fig_prod.update_traces(textposition='outside')
-                fig_prod.update_layout(**layout_oscuro, margin=dict(t=20, b=0), xaxis_title="% de Reclamos (Top 15)")
-                st.plotly_chart(fig_prod, use_container_width=True)
-                st.markdown("---")
-
-                # --- 5. CLIENTES CON RECLAMOS ---
-                st.markdown("#### 5. Clientes con Reclamos")
-                df_cli_nombres = df_cli['Entidad_Asociada'].value_counts().reset_index()
-                df_cli_nombres.columns = ['Cliente', 'Cantidad']
-                df_cli_nombres['%'] = (df_cli_nombres['Cantidad'] / total_cli) * 100
-                df_cli_nombres['Texto'] = df_cli_nombres['%'].apply(lambda x: f'{x:.1f}%')
-
-                prin_cliente = df_cli_nombres.iloc[0]['Cliente'] if len(df_cli_nombres) > 0 else "-"
-                pct_prin_cliente = df_cli_nombres.iloc[0]['%'] if len(df_cli_nombres) > 0 else 0
-                n_clientes = len(df_cli_nombres)
-
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Total Clientes", n_clientes)
-                c2.metric("Cliente Principal", prin_cliente)
-                c3.metric("% Principal", f"{pct_prin_cliente:.1f}%")
-                c4.metric("N° Clientes Afectados", n_clientes)
-
-                fig_cli = px.bar(df_cli_nombres.sort_values('Cantidad', ascending=True), x='%', y='Cliente', text='Texto', orientation='h', color_discrete_sequence=['#39ff14'])
-                fig_cli.update_traces(textposition='outside')
-                fig_cli.update_layout(**layout_oscuro, margin=dict(t=20, b=0), xaxis_title="% de Reclamos por Cliente")
-                st.plotly_chart(fig_cli, use_container_width=True)
-
-else:
-    st.info("💡 Arrastra el archivo 'Base Calidad.xlsx' de Smart Food Safe para generar tu Dashboard.")
