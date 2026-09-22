@@ -22,24 +22,22 @@ hr { border-bottom: 1px solid #ff6a00; box-shadow: 0px 0px 8px #ff6a00; }
 .stTabs [aria-selected="true"] { border-bottom: 2px solid #ff6a00; color: #ff6a00 !important; }
 
 /* ESTILOS PARA LOS BOTONES DE SEGMENTACIÓN (PILLS) */
-div[data-testid="stPills"] button,
-button[data-testid="stBaseButton-pills"] {
+div[data-testid="stPills"] button {
     background-color: #ffffff !important;
     border: 1px solid #d1d5db !important;
 }
-div[data-testid="stPills"] button p,
-button[data-testid="stBaseButton-pills"] p {
+/* Forzar texto negro en estado inactivo */
+div[data-testid="stPills"] button * {
     color: #000000 !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
 }
 /* Estado Seleccionado */
-div[data-testid="stPills"] button[aria-pressed="true"],
-button[data-testid="stBaseButton-pills"][aria-pressed="true"] {
+div[data-testid="stPills"] button[aria-pressed="true"] {
     background-color: #000000 !important;
-    border: 1px solid #555555 !important;
+    border: 1px solid #ff6a00 !important;
 }
-div[data-testid="stPills"] button[aria-pressed="true"] p,
-button[data-testid="stBaseButton-pills"][aria-pressed="true"] p {
+/* Forzar texto blanco en estado activo */
+div[data-testid="stPills"] button[aria-pressed="true"] * {
     color: #ffffff !important;
 }
 </style>
@@ -108,10 +106,8 @@ if file_capa is not None:
     if df is not None and not df.empty:
         st.markdown("### 🔍 Filtros Generales (Si no seleccionas nada, se muestran todos)")
         
-        # Filtros Superiores convertidos a Botones (Pills)
         f1, f2, f3 = st.columns(3)
         
-        # Se asume que si la lista está vacía (nada seleccionado), equivale a seleccionarlo todo
         filtro_origen = f1.pills("Origen", options=df['Origen_Clasificado'].unique(), selection_mode="multi")
         filtro_clase = f2.pills("Clasificación", options=df['Clasificacion_General'].unique(), selection_mode="multi")
         filtro_estado = f3.pills("Estado", options=df['Estado_Simplificado'].unique(), selection_mode="multi")
