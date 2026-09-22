@@ -2,109 +2,129 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Configuración inicial de la página
-st.set_page_config(page_title="Dashboard de Calidad", page_icon="📋", layout="wide")
+# Configuración inicial
+st.set_page_config(page_title="Dashboard CAPA - Smart Food Safe", page_icon="🛡️", layout="wide")
 
-st.title("📋 Control Operativo de Calidad")
-st.markdown("Monitoreo de No Conformidades - Carga de Datos Dinámica")
+st.title("🛡️ Panel de Control - No Conformidades (CAPA)")
+st.markdown("Plataforma de análisis dinámico conectada a Smart Food Safe")
 st.markdown("---")
 
-# Zona de carga de archivos
-col_upload1, col_upload2 = st.columns(2)
-with col_upload1:
-    file_clientes = st.file_uploader("📥 Subir archivo: Reclamos Clientes (Excel)", type=['xlsx'])
-with col_upload2:
-    file_proveedores = st.file_uploader("📥 Subir archivo: Estadística Proveedores (Excel)", type=['xlsx'])
+# Zona única de carga
+st.markdown("### 📥 Carga de Datos")
+file_capa = st.file_uploader("Arrastra aquí el reporte exportado (Excel/CSV) desde el módulo CAPA de SFS", type=['xlsx', 'xls', 'csv'])
 
-# Función para procesar y unificar los datos
+# Función para leer el archivo dinámicamente
 @st.cache_data(show_spinner=False)
-def procesar_datos(file_cli, file_prov):
+def procesar_base(file):
     try:
-        # Lectura de hojas específicas
-        df_cli = pd.read_excel(file_cli, sheet_name='BASE DE DATOS')
-        df_prov = pd.read_excel(file_prov, sheet_name='REGISTRO')
+        if file.name.endswith('.csv'):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
         
-        # Transformación Clientes
-        df_cli['Origen'] = 'Cliente'
-        df_cli.rename(columns={'Ano': 'Año', 'Cliente': 'Entidad', 'Status': 'Estado'}, inplace=True)
+        # Estandarización básica por si hay diferencias de mayúsculas/minúsculas en columnas
+        df.columns = df.columns.str.strip().str.upper()
         
-        # Transformación Proveedores
-        df_prov['Origen'] = 'Proveedor'
-        df_prov.rename(columns={'Proveedor': 'Entidad', 'Clasificación': 'Clasificacion', 'Cantidad ': 'Cantidad'}, inplace=True)
-        df_prov['Lote'] = None
-        df_prov['Observaciones'] = None
-        
-        # Consolidación
-        cols = ['Fecha', 'Año', 'Origen', 'Entidad', 'Producto', 'Motivo', 'Clasificacion', 'Estado', 'Cantidad', 'Lote', 'Observaciones']
-        df_cli = df_cli[cols]
-        df_prov = df_prov[cols]
-        df_maestra = pd.concat([df_cli, df_prov], ignore_index=True)
-        
-        # Limpieza estándar
-        df_maestra['Fecha'] = pd.to_datetime(df_maestra['Fecha'], errors='coerce')
-        df_maestra['Estado'] = df_maestra['Estado'].fillna('Abierto').astype(str).str.capitalize()
-        df_maestra['Clasificacion'] = df_maestra['Clasificacion'].fillna('No Definido').astype(str).str.capitalize()
-        
-        return df_maestra
+        # Intentar convertir columnas que parezcan fechas
+        for col in df.columns:
+            if 'FECHA' in col or 'DATE' in col:
+                df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
+                
+        return df
     except Exception as e:
-        st.error(f"Error al procesar los archivos. Verifica que las hojas se llamen 'BASE DE DATOS' y 'REGISTRO'. Detalle: {e}")
+        st.error(f"Error al leer el archivo. Verifica el formato. Detalle: {e}")
         return None
 
-# Lógica principal del Dashboard
-if file_clientes is not None and file_proveedores is not None:
-    df = procesar_datos(file_clientes, file_proveedores)
+if file_capa is not None:
+    df = procesar_base(file_capa)
     
-    if df is not None:
-        # --- FILTROS ---
-        st.markdown("### Filtros de Análisis")
-        col_f1, col_f2, col_f3 = st.columns(3)
-        origen_filtro = col_f1.multiselect("Origen", options=df['Origen'].unique(), default=df['Origen'].unique())
-        estado_filtro = col_f2.multiselect("Estado", options=df['Estado'].unique(), default=df['Estado'].unique())
-        clasif_filtro = col_f3.multiselect("Clasificación", options=df['Clasificacion'].unique(), default=df['Clasificacion'].unique())
+    if df is not None and not df.empty:
+        st.markdown("---")
+        st.markdown("### 🔍 Filtros de Análisis Avanzado")
         
-        df_filtrado = df[
-            (df['Origen'].isin(origen_filtro)) & 
-            (df['Estado'].isin(estado_filtro)) &
-            (df['Clasificacion'].isin(clasif_filtro))
-        ]
+        # Filtros Dinámicos (Se adaptan a las columnas que tenga tu Excel)
+        cols = st.columns(4)
+        
+        # 1. Filtro de Origen (Cliente, Proveedor, Interno)
+        origen_col = 'ORIGEN' if 'ORIGEN' in df.columns else (df.columns[3] if len(df.columns) > 3 else None)
+        if origen_col:
+            origen_filtro = cols[0].multiselect("Origen (Tipo)", options=df[origen_col].dropna().unique(), default=df[origen_col].dropna().unique())
+            df = df[df[origen_col].isin(origen_filtro)]
+
+        # 2. Filtro de Estado
+        estado_col = 'ESTADO' if 'ESTADO' in df.columns else (df.columns[10] if len(df.columns) > 10 else None)
+        if estado_col:
+            estado_filtro = cols[1].multiselect("Estado CAPA", options=df[estado_col].dropna().unique(), default=df[estado_col].dropna().unique())
+            df = df[df[estado_col].isin(estado_filtro)]
+            
+        # 3. Filtro de Clasificación/Severidad
+        clasif_col = 'CLASIFICACION' if 'CLASIFICACION' in df.columns else (df.columns[9] if len(df.columns) > 9 else None)
+        if clasif_col:
+            clasif_filtro = cols[2].multiselect("Nivel de Severidad", options=df[clasif_col].dropna().unique(), default=df[clasif_col].dropna().unique())
+            df = df[df[clasif_col].isin(clasif_filtro)]
+            
+        # 4. Filtro de Motivo/Desviación
+        motivo_col = 'MOTIVO' if 'MOTIVO' in df.columns else (df.columns[8] if len(df.columns) > 8 else None)
+        if motivo_col:
+            motivos_lista = df[motivo_col].dropna().unique()
+            motivo_filtro = cols[3].multiselect("Motivo Específico", options=motivos_lista, default=motivos_lista)
+            df = df[df[motivo_col].isin(motivo_filtro)]
+
+        st.markdown("---")
         
         # --- KPIs ---
-        st.markdown("---")
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        total_nc = len(df_filtrado)
-        abiertas = len(df_filtrado[df_filtrado['Estado'] != 'Cerrado'])
-        criticas = len(df_filtrado[df_filtrado['Clasificacion'].isin(['Inocuidad', 'Critico', 'Crítico'])])
-        tasa_res = ((total_nc - abiertas) / total_nc * 100) if total_nc > 0 else 0
+        total_casos = len(df)
+        kpi1.metric("Total de Hallazgos Filtrados", total_casos)
         
-        kpi1.metric("Total de Hallazgos", total_nc)
-        kpi2.metric("Casos Abiertos", abiertas)
-        kpi3.metric("Eventos de Inocuidad/Críticos", criticas)
-        kpi4.metric("Tasa de Resolución", f"{tasa_res:.1f}%")
-        
+        if estado_col:
+            abiertos = len(df[~df[estado_col].astype(str).str.contains('Cerrad|Closed', case=False, na=False)])
+            kpi2.metric("Casos Abiertos / Pendientes", abiertos)
+            tasa = ((total_casos - abiertos) / total_casos * 100) if total_casos > 0 else 0
+            kpi4.metric("Efectividad de Cierre", f"{tasa:.1f}%")
+        else:
+            kpi2.metric("Casos Abiertos / Pendientes", "N/A")
+            kpi4.metric("Efectividad de Cierre", "N/A")
+            
+        if clasif_col:
+            criticos = len(df[df[clasif_col].astype(str).str.contains('Crítico|Inocuidad|Critical', case=False, na=False)])
+            kpi3.metric("Hallazgos Críticos / Inocuidad", criticos)
+        else:
+            kpi3.metric("Hallazgos Críticos / Inocuidad", "N/A")
+
         # --- GRÁFICOS ---
         st.markdown("---")
-        chart1, chart2 = st.columns(2)
+        c1, c2 = st.columns(2)
         
-        with chart1:
-            st.markdown("**Top 5 Motivos Recurrentes**")
-            top_motivos = df_filtrado['Motivo'].value_counts().head(5).reset_index()
-            top_motivos.columns = ['Motivo', 'Cantidad']
-            fig_bar = px.bar(top_motivos, x='Cantidad', y='Motivo', orientation='h', color_discrete_sequence=['#0f766e'])
-            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=0, r=0, t=10, b=0))
-            st.plotly_chart(fig_bar, use_container_width=True)
-            
-        with chart2:
-            st.markdown("**Distribución por Severidad**")
-            clasif_count = df_filtrado['Clasificacion'].value_counts().reset_index()
-            clasif_count.columns = ['Clasificacion', 'Cantidad']
-            fig_pie = px.pie(clasif_count, values='Cantidad', names='Clasificacion', hole=0.4)
-            fig_pie.update_layout(margin=dict(l=0, r=0, t=10, b=0))
-            st.plotly_chart(fig_pie, use_container_width=True)
-            
-        # --- TABLA DE DETALLE ---
+        with c1:
+            if motivo_col:
+                st.markdown("**Distribución por Motivo / Causa Raíz**")
+                df_motivos = df[motivo_col].value_counts().reset_index()
+                df_motivos.columns = [motivo_col, 'Cantidad']
+                fig1 = px.bar(df_motivos.head(10), x='Cantidad', y=motivo_col, orientation='h', color_discrete_sequence=['#0d9488'])
+                fig1.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(t=10))
+                st.plotly_chart(fig1, use_container_width=True)
+                
+        with c2:
+            st.markdown("**Trazabilidad por Entidad (Cliente / Proveedor / Línea)**")
+            entidad_col = 'CLIENTE_PROVEEDOR' if 'CLIENTE_PROVEEDOR' in df.columns else (df.columns[4] if len(df.columns) > 4 else None)
+            if entidad_col:
+                df_entidad = df[entidad_col].value_counts().reset_index()
+                df_entidad.columns = [entidad_col, 'Cantidad']
+                fig2 = px.bar(df_entidad.head(10), x=entidad_col, y='Cantidad', color_discrete_sequence=['#ea580c'])
+                fig2.update_layout(xaxis_tickangle=-45, margin=dict(t=10))
+                st.plotly_chart(fig2, use_container_width=True)
+
+        # --- TABLA DE DATOS ---
         st.markdown("---")
-        st.markdown("**Registro Detallado de No Conformidades**")
-        st.dataframe(df_filtrado.sort_values(by='Fecha', ascending=False), use_container_width=True, hide_index=True)
+        st.markdown("**Matriz Detallada de CAPAs (Datos Filtrados)**")
+        
+        # Intentar ordenar por fecha si existe
+        fecha_col = next((col for col in df.columns if 'FECHA' in col or 'DATE' in col), None)
+        if fecha_col:
+            df = df.sort_values(by=fecha_col, ascending=False)
+            
+        st.dataframe(df, use_container_width=True, hide_index=True)
 
 else:
-    st.info("💡 Por favor, arrastra y suelta ambos archivos de Excel en las cajas superiores para desplegar los indicadores.")
+    st.info("💡 Por favor, sube el archivo unificado exportado desde Smart Food Safe para activar el panel.")
