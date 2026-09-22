@@ -18,25 +18,24 @@ hr { border-bottom: 1px solid #ff6a00; box-shadow: 0px 0px 8px #ff6a00; }
 .stAlert { background-color: #111827; border: 1px solid #ff6a00; }
 /* Estilo para las pestañas */
 .stTabs [data-baseweb="tab-list"] { background-color: #0a0e17; }
-.stTabs [data-baseweb="tab"] { color: #00f3ff; font-weight: bold; }
+.stTabs [data-baseweb="tab"] { color: #00f3ff; font-weight: bold; font-size: 16px; }
 .stTabs [aria-selected="true"] { border-bottom: 2px solid #ff6a00; color: #ff6a00 !important; }
 
 /* ESTILOS PARA LOS BOTONES DE SEGMENTACIÓN (PILLS) */
+/* Estado Inactivo (Sin seleccionar) -> Fondo Negro, Letras Blancas */
 div[data-testid="stPills"] button {
-    background-color: #ffffff !important;
-    border: 1px solid #d1d5db !important;
+    background-color: #000000 !important;
+    border: 1px solid #333333 !important;
 }
-/* Forzar texto negro en estado inactivo */
 div[data-testid="stPills"] button * {
-    color: #000000 !important;
+    color: #ffffff !important;
     font-weight: 700 !important;
 }
-/* Estado Seleccionado */
+/* Estado Activo (Seleccionado) -> Fondo Rojo, Letras Blancas */
 div[data-testid="stPills"] button[aria-pressed="true"] {
-    background-color: #000000 !important;
-    border: 1px solid #ff6a00 !important;
+    background-color: #ff0000 !important;
+    border: 1px solid #ff0000 !important;
 }
-/* Forzar texto blanco en estado activo */
 div[data-testid="stPills"] button[aria-pressed="true"] * {
     color: #ffffff !important;
 }
@@ -120,7 +119,12 @@ if file_capa is not None:
                   (df['Clasificacion_General'].isin(clase_val)) & 
                   (df['Estado_Simplificado'].isin(estado_val))]
                   
-        layout_oscuro = dict(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e2e8f0'))
+        layout_oscuro = dict(
+            template='plotly_dark', 
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            font=dict(color='#e2e8f0', size=14) # Tamaño de fuente general más grande
+        )
 
         # --- PESTAÑAS ---
         tab_global, tab_clientes = st.tabs(["🌐 Visión Global", "👥 Análisis de Clientes (Reclamos)"])
@@ -178,7 +182,9 @@ if file_capa is not None:
                     c4.metric("Promedio / Mes", prom_mes)
 
                     fig_mes = px.bar(df_mes, x='Mes', y='Cantidad', text='Cantidad', color_discrete_sequence=['#00f3ff'])
-                    fig_mes.update_traces(textposition='outside')
+                    fig_mes.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
+                    fig_mes.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
+                    fig_mes.update_yaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                     fig_mes.update_layout(**layout_oscuro, margin=dict(t=20, b=0))
                     st.plotly_chart(fig_mes, use_container_width=True)
                     st.markdown("---")
@@ -196,8 +202,8 @@ if file_capa is not None:
                     c4.metric("% Calidad", f"{pct_calidad:.1f}%")
 
                     fig_class = px.pie(df_cli, names='Clasificacion_General', hole=0, color_discrete_sequence=['#00f3ff', '#ff6a00'])
-                    fig_class.update_traces(textinfo='label+percent+value')
-                    fig_class.update_layout(**layout_oscuro, margin=dict(t=20, b=0))
+                    fig_class.update_traces(textinfo='label+percent+value', textfont=dict(size=16, color='white'))
+                    fig_class.update_layout(**layout_oscuro, margin=dict(t=20, b=0), legend=dict(font=dict(size=15)))
                     st.plotly_chart(fig_class, use_container_width=True)
                     st.markdown("---")
 
@@ -219,8 +225,10 @@ if file_capa is not None:
                     c4.metric("2do Motivo", sec_mot)
 
                     fig_mot = px.bar(df_mot.sort_values('Cantidad', ascending=True), x='%', y='Motivo', text='Texto', orientation='h', color_discrete_sequence=['#00f3ff'])
-                    fig_mot.update_traces(textposition='outside')
-                    fig_mot.update_layout(**layout_oscuro, margin=dict(t=20, b=0), xaxis_title="% de Reclamos")
+                    fig_mot.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
+                    fig_mot.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
+                    fig_mot.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
+                    fig_mot.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos")
                     st.plotly_chart(fig_mot, use_container_width=True)
                     st.markdown("---")
 
@@ -242,8 +250,10 @@ if file_capa is not None:
                     c4.metric("2do Producto", sec_prod)
 
                     fig_prod = px.bar(df_prod.head(15).sort_values('Cantidad', ascending=True), x='%', y='Producto', text='Texto', orientation='h', color_discrete_sequence=['#ff6a00'])
-                    fig_prod.update_traces(textposition='outside')
-                    fig_prod.update_layout(**layout_oscuro, margin=dict(t=20, b=0), xaxis_title="% de Reclamos (Top 15)")
+                    fig_prod.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
+                    fig_prod.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
+                    fig_prod.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
+                    fig_prod.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos (Top 15)")
                     st.plotly_chart(fig_prod, use_container_width=True)
                     st.markdown("---")
 
@@ -265,8 +275,10 @@ if file_capa is not None:
                     c4.metric("N° Clientes Afectados", n_clientes)
 
                     fig_cli = px.bar(df_cli_nombres.sort_values('Cantidad', ascending=True), x='%', y='Cliente', text='Texto', orientation='h', color_discrete_sequence=['#39ff14'])
-                    fig_cli.update_traces(textposition='outside')
-                    fig_cli.update_layout(**layout_oscuro, margin=dict(t=20, b=0), xaxis_title="% de Reclamos por Cliente")
+                    fig_cli.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
+                    fig_cli.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
+                    fig_cli.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
+                    fig_cli.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos por Cliente")
                     st.plotly_chart(fig_cli, use_container_width=True)
 
 else:
