@@ -2,129 +2,149 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Configuración inicial
+# --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Dashboard CAPA - Smart Food Safe", page_icon="🛡️", layout="wide")
-
 st.title("🛡️ Panel de Control - No Conformidades (CAPA)")
-st.markdown("Plataforma de análisis dinámico conectada a Smart Food Safe")
+st.markdown("Plataforma de análisis dinámico conectado a Smart Food Safe")
 st.markdown("---")
 
-# Zona única de carga
-st.markdown("### 📥 Carga de Datos")
-file_capa = st.file_uploader("Arrastra aquí el reporte exportado (Excel/CSV) desde el módulo CAPA de SFS", type=['xlsx', 'xls', 'csv'])
+# --- ZONA DE CARGA ---
+st.markdown("### 📥 Carga de Reporte SFS")
+file_capa = st.file_uploader("Arrastra aquí tu Excel 'Base Calidad' exportado desde SFS", type=['xlsx', 'xls'])
 
-# Función para leer el archivo dinámicamente
+# --- PROCESAMIENTO DE DATOS ---
 @st.cache_data(show_spinner=False)
-def procesar_base(file):
+def procesar_sfs(file):
     try:
-        if file.name.endswith('.csv'):
-            df = pd.read_csv(file)
+        # Leer hoja principal
+        df = pd.read_excel(file)
+        
+        # 1. Estandarización de Fecha
+        if 'Fecha de Creación' in df.columns:
+            df['Fecha'] = pd.to_datetime(df['Fecha de Creación'], format='%d-%m-%Y', errors='coerce').dt.date
         else:
-            df = pd.read_excel(file)
+            df['Fecha'] = pd.NaT
+
+        # 2. Consolidación de Entidad (Cliente vs Proveedor)
+        df['Organización'] = df['Organización'].fillna('')
+        df['Nombre del Proveedor'] = df['Nombre del Proveedor'].fillna('')
         
-        # Estandarización básica por si hay diferencias de mayúsculas/minúsculas en columnas
-        df.columns = df.columns.str.strip().str.upper()
+        def determinar_entidad(row):
+            if row['Nombre del Proveedor'] != '': return row['Nombre del Proveedor']
+            if row['Organización'] != '': return row['Organización']
+            return 'Interno / Planta'
+            
+        df['Entidad_Asociada'] = df.apply(determinar_entidad, axis=1)
+
+        # 3. Determinar Origen del Hallazgo
+        def determinar_origen(row):
+            if row['Nombre del Proveedor'] != '': return 'Proveedor'
+            if row['Organización'] != '': return 'Cliente'
+            return 'Interno'
+            
+        df['Origen_Clasificado'] = df.apply(determinar_origen, axis=1)
+
+        # 4. Calidad vs Inocuidad
+        def clasificar_severidad(tipo):
+            tipo = str(tipo).lower()
+            if 'seguridad alimentaria' in tipo or 'inocuidad' in tipo or 'microbiológica' in tipo:
+                return 'Inocuidad'
+            return 'Calidad'
+            
+        col_tipo = 'Tipo de Incidente' if 'Tipo de Incidente' in df.columns else 'Categoría del Incidente'
+        df['Clasificacion_General'] = df[col_tipo].apply(clasificar_severidad)
+
+        # 5. Estado Simplificado (Abierto / Cerrado)
+        df['Estado_Simplificado'] = df['Estado'].apply(lambda x: 'Cerrado' if 'Cerrado' in str(x) else 'Abierto')
+
+        # 6. Limpieza Producto y Motivo
+        df['Producto_Afectado'] = df['Product Name'].fillna(df['Origin Type']).fillna('No Especificado')
+        df['Causa_Motivo'] = df['Subcategoría del Incidente'].fillna(df['Categoría del Incidente']).fillna('No Definido')
+
+        # Seleccionar columnas útiles para el dashboard
+        cols_finales = ['Incident Number', 'Fecha', 'Origen_Clasificado', 'Entidad_Asociada', 
+                        'Producto_Afectado', 'Causa_Motivo', 'Clasificacion_General', 
+                        'Estado_Simplificado', 'Severidad']
         
-        # Intentar convertir columnas que parezcan fechas
-        for col in df.columns:
-            if 'FECHA' in col or 'DATE' in col:
-                df[col] = pd.to_datetime(df[col], errors='coerce').dt.date
-                
-        return df
+        # Filtramos para asegurarnos que solo pasen columnas que existen
+        cols_existentes = [c for c in cols_finales if c in df.columns]
+        return df[cols_existentes]
+
     except Exception as e:
-        st.error(f"Error al leer el archivo. Verifica el formato. Detalle: {e}")
+        st.error(f"Error procesando el archivo: {e}")
         return None
 
+# --- LÓGICA DE INTERFAZ Y GRÁFICOS ---
 if file_capa is not None:
-    df = procesar_base(file_capa)
+    df = procesar_sfs(file_capa)
     
     if df is not None and not df.empty:
+        # --- FILTROS GLOBALES ---
         st.markdown("---")
-        st.markdown("### 🔍 Filtros de Análisis Avanzado")
+        st.markdown("### 🔍 Filtros")
         
-        # Filtros Dinámicos (Se adaptan a las columnas que tenga tu Excel)
-        cols = st.columns(4)
+        f1, f2, f3, f4 = st.columns(4)
+        filtro_origen = f1.multiselect("Origen", df['Origen_Clasificado'].unique(), default=df['Origen_Clasificado'].unique())
+        filtro_clase = f2.multiselect("Clasificación", df['Clasificacion_General'].unique(), default=df['Clasificacion_General'].unique())
+        filtro_estado = f3.multiselect("Estado", df['Estado_Simplificado'].unique(), default=df['Estado_Simplificado'].unique())
         
-        # 1. Filtro de Origen (Cliente, Proveedor, Interno)
-        origen_col = 'ORIGEN' if 'ORIGEN' in df.columns else (df.columns[3] if len(df.columns) > 3 else None)
-        if origen_col:
-            origen_filtro = cols[0].multiselect("Origen (Tipo)", options=df[origen_col].dropna().unique(), default=df[origen_col].dropna().unique())
-            df = df[df[origen_col].isin(origen_filtro)]
+        df_f = df[
+            (df['Origen_Clasificado'].isin(filtro_origen)) &
+            (df['Clasificacion_General'].isin(filtro_clase)) &
+            (df['Estado_Simplificado'].isin(filtro_estado))
+        ]
 
-        # 2. Filtro de Estado
-        estado_col = 'ESTADO' if 'ESTADO' in df.columns else (df.columns[10] if len(df.columns) > 10 else None)
-        if estado_col:
-            estado_filtro = cols[1].multiselect("Estado CAPA", options=df[estado_col].dropna().unique(), default=df[estado_col].dropna().unique())
-            df = df[df[estado_col].isin(estado_filtro)]
-            
-        # 3. Filtro de Clasificación/Severidad
-        clasif_col = 'CLASIFICACION' if 'CLASIFICACION' in df.columns else (df.columns[9] if len(df.columns) > 9 else None)
-        if clasif_col:
-            clasif_filtro = cols[2].multiselect("Nivel de Severidad", options=df[clasif_col].dropna().unique(), default=df[clasif_col].dropna().unique())
-            df = df[df[clasif_col].isin(clasif_filtro)]
-            
-        # 4. Filtro de Motivo/Desviación
-        motivo_col = 'MOTIVO' if 'MOTIVO' in df.columns else (df.columns[8] if len(df.columns) > 8 else None)
-        if motivo_col:
-            motivos_lista = df[motivo_col].dropna().unique()
-            motivo_filtro = cols[3].multiselect("Motivo Específico", options=motivos_lista, default=motivos_lista)
-            df = df[df[motivo_col].isin(motivo_filtro)]
-
-        st.markdown("---")
-        
         # --- KPIs ---
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        total_casos = len(df)
-        kpi1.metric("Total de Hallazgos Filtrados", total_casos)
+        st.markdown("---")
+        total = len(df_f)
+        calidad_count = len(df_f[df_f['Clasificacion_General'] == 'Calidad'])
+        inocuidad_count = len(df_f[df_f['Clasificacion_General'] == 'Inocuidad'])
+        cerrados = len(df_f[df_f['Estado_Simplificado'] == 'Cerrado'])
         
-        if estado_col:
-            abiertos = len(df[~df[estado_col].astype(str).str.contains('Cerrad|Closed', case=False, na=False)])
-            kpi2.metric("Casos Abiertos / Pendientes", abiertos)
-            tasa = ((total_casos - abiertos) / total_casos * 100) if total_casos > 0 else 0
-            kpi4.metric("Efectividad de Cierre", f"{tasa:.1f}%")
-        else:
-            kpi2.metric("Casos Abiertos / Pendientes", "N/A")
-            kpi4.metric("Efectividad de Cierre", "N/A")
-            
-        if clasif_col:
-            criticos = len(df[df[clasif_col].astype(str).str.contains('Crítico|Inocuidad|Critical', case=False, na=False)])
-            kpi3.metric("Hallazgos Críticos / Inocuidad", criticos)
-        else:
-            kpi3.metric("Hallazgos Críticos / Inocuidad", "N/A")
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Total de Hallazgos", total)
+        k2.metric("Eventos de Calidad", calidad_count)
+        k3.metric("Eventos de Inocuidad", inocuidad_count)
+        k4.metric("Tasa de Cierre", f"{(cerrados/total*100):.1f}%" if total > 0 else "0%")
 
         # --- GRÁFICOS ---
         st.markdown("---")
         c1, c2 = st.columns(2)
         
         with c1:
-            if motivo_col:
-                st.markdown("**Distribución por Motivo / Causa Raíz**")
-                df_motivos = df[motivo_col].value_counts().reset_index()
-                df_motivos.columns = [motivo_col, 'Cantidad']
-                fig1 = px.bar(df_motivos.head(10), x='Cantidad', y=motivo_col, orientation='h', color_discrete_sequence=['#0d9488'])
-                fig1.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(t=10))
-                st.plotly_chart(fig1, use_container_width=True)
-                
-        with c2:
-            st.markdown("**Trazabilidad por Entidad (Cliente / Proveedor / Línea)**")
-            entidad_col = 'CLIENTE_PROVEEDOR' if 'CLIENTE_PROVEEDOR' in df.columns else (df.columns[4] if len(df.columns) > 4 else None)
-            if entidad_col:
-                df_entidad = df[entidad_col].value_counts().reset_index()
-                df_entidad.columns = [entidad_col, 'Cantidad']
-                fig2 = px.bar(df_entidad.head(10), x=entidad_col, y='Cantidad', color_discrete_sequence=['#ea580c'])
-                fig2.update_layout(xaxis_tickangle=-45, margin=dict(t=10))
-                st.plotly_chart(fig2, use_container_width=True)
-
-        # --- TABLA DE DATOS ---
-        st.markdown("---")
-        st.markdown("**Matriz Detallada de CAPAs (Datos Filtrados)**")
-        
-        # Intentar ordenar por fecha si existe
-        fecha_col = next((col for col in df.columns if 'FECHA' in col or 'DATE' in col), None)
-        if fecha_col:
-            df = df.sort_values(by=fecha_col, ascending=False)
+            st.markdown("**Calidad vs Inocuidad**")
+            fig_pie = px.pie(df_f, names='Clasificacion_General', hole=0.4, color_discrete_sequence=['#0e7490', '#ea580c'])
+            st.plotly_chart(fig_pie, use_container_width=True)
             
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        with c2:
+            st.markdown("**Estado de Reclamos (Abierto vs Cerrado)**")
+            df_est = df_f['Estado_Simplificado'].value_counts().reset_index()
+            df_est.columns = ['Estado', 'Cantidad']
+            fig_est = px.bar(df_est, x='Cantidad', y='Estado', orientation='h', color='Estado', color_discrete_map={'Cerrado':'#0e7490', 'Abierto':'#ea580c'})
+            st.plotly_chart(fig_est, use_container_width=True)
+
+        c3, c4 = st.columns(2)
+        
+        with c3:
+            st.markdown("**Top 10: Motivos de Reclamo / Hallazgos**")
+            df_motivos = df_f['Causa_Motivo'].value_counts().head(10).reset_index()
+            df_motivos.columns = ['Motivo', 'Cantidad']
+            fig_mot = px.bar(df_motivos, x='Cantidad', y='Motivo', orientation='h', color_discrete_sequence=['#0e7490'])
+            fig_mot.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_mot, use_container_width=True)
+
+        with c4:
+            st.markdown("**Top 10: Entidades (Clientes y Proveedores)**")
+            df_ent = df_f[df_f['Entidad_Asociada'] != 'Interno / Planta']['Entidad_Asociada'].value_counts().head(10).reset_index()
+            df_ent.columns = ['Entidad', 'Cantidad']
+            fig_ent = px.bar(df_ent, x='Cantidad', y='Entidad', orientation='h', color_discrete_sequence=['#ea580c'])
+            fig_ent.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_ent, use_container_width=True)
+
+        # --- TABLA INFERIOR ---
+        st.markdown("---")
+        st.markdown("**Registro Detallado (Exportable)**")
+        st.dataframe(df_f, use_container_width=True, hide_index=True)
 
 else:
-    st.info("💡 Por favor, sube el archivo unificado exportado desde Smart Food Safe para activar el panel.")
+    st.info("💡 Arrastra el archivo 'Base Calidad.xlsx' de Smart Food Safe para generar tu Dashboard.")
