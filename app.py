@@ -10,33 +10,44 @@ st.set_page_config(page_title="Dashboard Calidad - Tribu Food", page_icon="📊"
 st.markdown("""
 <style>
 .stApp { background-color: #0a0e17; }
-.stMarkdown, p, label, .stTab { color: #e2e8f0 !important; }
+/* Se aplica color claro a los textos generales, pero SE EXCLUYEN los textos de los Pills */
+.stMarkdown p:not(div[data-testid="stPills"] p), 
+label:not(div[data-testid="stPills"] label), 
+.stTab { color: #e2e8f0 !important; }
+
 h1, h2, h3, h4 { color: #ff6a00 !important; text-shadow: 0px 0px 12px rgba(255, 106, 0, 0.8); }
 [data-testid="stMetricValue"] { color: #39ff14 !important; text-shadow: 0px 0px 12px rgba(57, 255, 20, 0.8); }
 [data-testid="stMetricLabel"] { color: #00f3ff !important; text-shadow: 0px 0px 8px rgba(0, 243, 255, 0.5); }
 hr { border-bottom: 1px solid #ff6a00; box-shadow: 0px 0px 8px #ff6a00; }
 .stAlert { background-color: #111827; border: 1px solid #ff6a00; }
+
 /* Estilo para las pestañas */
 .stTabs [data-baseweb="tab-list"] { background-color: #0a0e17; }
 .stTabs [data-baseweb="tab"] { color: #00f3ff; font-weight: bold; font-size: 16px; }
 .stTabs [aria-selected="true"] { border-bottom: 2px solid #ff6a00; color: #ff6a00 !important; }
 
-/* ESTILOS PARA LOS BOTONES DE SEGMENTACIÓN (PILLS) */
-/* Botón Inactivo (Sin seleccionar) -> Fondo Blanco, Letras Negras */
+/* --- ESTILOS MEJORADOS PARA LOS BOTONES DE SEGMENTACIÓN (PILLS) --- */
+/* 1. Fondo de botón inactivo */
 div[data-testid="stPills"] button {
     background-color: #ffffff !important;
     border: 1px solid #d1d5db !important;
 }
-div[data-testid="stPills"] button * {
+/* 2. Forzar texto negro oscuro dentro del botón inactivo */
+div[data-testid="stPills"] button p, 
+div[data-testid="stPills"] button span, 
+div[data-testid="stPills"] button div {
     color: #000000 !important;
-    font-weight: 700 !important;
+    font-weight: 800 !important;
 }
-/* Botón Activo (Seleccionado) -> Fondo Rojo, Letras Blancas */
+/* 3. Fondo de botón activo (Seleccionado) */
 div[data-testid="stPills"] button[aria-pressed="true"] {
     background-color: #ff0000 !important;
     border: 1px solid #ff0000 !important;
 }
-div[data-testid="stPills"] button[aria-pressed="true"] * {
+/* 4. Forzar texto blanco brillante dentro del botón activo */
+div[data-testid="stPills"] button[aria-pressed="true"] p,
+div[data-testid="stPills"] button[aria-pressed="true"] span,
+div[data-testid="stPills"] button[aria-pressed="true"] div {
     color: #ffffff !important;
 }
 </style>
@@ -60,12 +71,12 @@ def procesar_sfs(file):
     try:
         df = pd.read_excel(file)
         
-        # 0. ELIMINAR DUPLICADOS (Folios Únicos)
+        # 0. ELIMINAR DUPLICADOS DE FORMA SEGURA
         if 'Incident Number' in df.columns:
             df['Incident Number'] = df['Incident Number'].astype(str).str.strip()
             df = df.drop_duplicates(subset=['Incident Number'], keep='first')
         
-        # 1. Fecha y Meses
+        # 1. Fecha y Meses 
         meses_es = {1:'Enero', 2:'Febrero', 3:'Marzo', 4:'Abril', 5:'Mayo', 6:'Junio', 
                     7:'Julio', 8:'Agosto', 9:'Septiembre', 10:'Octubre', 11:'Noviembre', 12:'Diciembre'}
         if 'Fecha de Creación' in df.columns:
@@ -78,7 +89,6 @@ def procesar_sfs(file):
             df['Mes_Num'] = 99
             df['Mes'] = 'Desconocido'
 
-        # Prevención de errores si faltan columnas
         for c in ['Organización', 'Nombre del Proveedor', 'Investigador Asignado']:
             if c not in df.columns: df[c] = ''
             
@@ -86,7 +96,7 @@ def procesar_sfs(file):
         df['Nombre del Proveedor'] = df['Nombre del Proveedor'].fillna('')
         df['Investigador Asignado'] = df['Investigador Asignado'].fillna('Sin Asignar')
 
-        # 2. NUEVA REGLA LÓGICA: COMERCIAL VALORA = PROVEEDOR, RESTO = CLIENTE
+        # 2. REGLA LÓGICA: COMERCIAL VALORA = PROVEEDOR, RESTO = CLIENTE
         def determinar_origen(r):
             org = str(r['Organización']).strip().upper()
             prov = str(r['Nombre del Proveedor']).strip()
@@ -116,10 +126,9 @@ def procesar_sfs(file):
             
         df['Entidad_Asociada'] = df.apply(determinar_entidad, axis=1)
 
-        # 3. Clasificación y Estados (NUEVA REGLA INOCUIDAD)
+        # 3. Clasificación (REGLA INOCUIDAD)
         col_tipo = 'Tipo de Incidente' if 'Tipo de Incidente' in df.columns else 'Categoría del Incidente'
         if col_tipo in df.columns:
-            # Todo lo que diga "Seguridad Alimentaria" es Inocuidad, el resto es Calidad
             df['Clasificacion_General'] = df[col_tipo].apply(lambda x: 'Inocuidad' if 'seguridad alimentaria' in str(x).strip().lower() else 'Calidad')
         else:
             df['Clasificacion_General'] = 'Calidad'
@@ -168,7 +177,6 @@ if file_capa is not None:
         clase_val = filtro_clase if filtro_clase else df['Clasificacion_General'].unique()
         estado_val = filtro_estado if filtro_estado else df['Estado_Simplificado'].unique()
         
-        # Filtro Global
         df_temp = df[(df['Mes'].isin(mes_val)) & 
                      (df['Origen_Clasificado'].isin(origen_val)) & 
                      (df['Clasificacion_General'].isin(clase_val)) & 
@@ -192,7 +200,6 @@ if file_capa is not None:
                     if cli_opts:
                         sel_cli = st.pills("Clientes Específicos", options=cli_opts, selection_mode="multi")
 
-        # Aplicar subfiltros al DataFrame Final
         df_f = df_temp.copy()
         if sel_inv:
             df_f = df_f[~((df_f['Origen_Clasificado'] == 'Proveedor') & (~df_f['Investigador Asignado'].isin(sel_inv)))]
@@ -225,7 +232,6 @@ if file_capa is not None:
         # PESTAÑA 2: ANÁLISIS DETALLADO
         # ==========================================
         with tab_analisis:
-            # Aquí ya NO restringimos a "Cliente". Analiza todo lo que pase el filtro global.
             df_analisis = df_f.copy()
             
             if df_analisis.empty:
