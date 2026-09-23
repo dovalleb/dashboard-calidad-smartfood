@@ -85,7 +85,7 @@ def procesar_sfs(file):
             df['Mes_Num'] = 99
             df['Mes'] = 'Desconocido'
 
-        for c in ['Organización', 'Nombre del Proveedor', 'Investigador Asignado']:
+        for c in ['Organización', 'Nombre del Proveedor', 'Investigador Asignado', 'Nombre del Material de Empaque']:
             if c not in df.columns: df[c] = ''
             
         df['Organización'] = df['Organización'].fillna('')
@@ -137,18 +137,39 @@ def procesar_sfs(file):
         else:
             df['Estado_Simplificado'] = 'Abierto'
 
-        # 5. Detalles 
-        col_prod = 'Product Name' if 'Product Name' in df.columns else 'Producto'
-        col_orig_type = 'Origin Type' if 'Origin Type' in df.columns else 'Tipo de Origen'
-        if col_prod not in df.columns: df[col_prod] = ''
-        if col_orig_type not in df.columns: df[col_orig_type] = ''
-        df['Producto_Afectado'] = df[col_prod].replace('', pd.NA).fillna(df[col_orig_type]).fillna('No Especificado')
+        # 5. Detalles de Producto (Ahora apunta a Nombre del Material de Empaque)
+        df['Producto_Afectado'] = df['Nombre del Material de Empaque'].replace('', pd.NA).fillna('No Especificado')
         
+        # 6. Motivos del reclamo (Limpieza y Traducción a Español)
         col_subcat = 'Subcategoría del Incidente' if 'Subcategoría del Incidente' in df.columns else 'Subcategoría'
         col_cat = 'Categoría del Incidente' if 'Categoría del Incidente' in df.columns else 'Categoría'
         if col_subcat not in df.columns: df[col_subcat] = ''
         if col_cat not in df.columns: df[col_cat] = ''
-        df['Causa_Motivo'] = df[col_subcat].replace('', pd.NA).fillna(df[col_cat]).fillna('No Definido')
+        
+        df['Causa_Motivo_Raw'] = df[col_subcat].replace('', pd.NA).fillna(df[col_cat]).fillna('No Definido')
+        
+        # Diccionario para forzar traducción de SFS
+        diccionario_motivos = {
+            'extraneous vegetable material': 'Material Vegetal Extraño',
+            'bitter': 'Sabor Amargo',
+            'other appearance': 'Otra Apariencia',
+            'unexpected ingredient': 'Ingrediente Inesperado',
+            'exploded bag': 'Bolsa Explotada',
+            'open and close issues': 'Problemas de Apertura y Cierre',
+            'yeast and mold': 'Levaduras y Mohos',
+            'plastic': 'Presencia de Plástico',
+            'metal': 'Presencia de Metal',
+            'color': 'Problemas de Color',
+            'cuerpos extraños origen vegetal': 'Cuerpos Extraños (Vegetal)',
+            'salmonella spp.': 'Presencia de Salmonella spp.'
+        }
+        
+        def traducir_motivo(motivo):
+            motivo_limpio = str(motivo).strip()
+            motivo_lower = motivo_limpio.lower()
+            return diccionario_motivos.get(motivo_lower, motivo_limpio)
+            
+        df['Causa_Motivo'] = df['Causa_Motivo_Raw'].apply(traducir_motivo)
 
         return df
     except Exception as e:
@@ -298,13 +319,12 @@ if file_capa is not None:
                 fig_mot.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
                 fig_mot.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                 fig_mot.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
-                # Ajuste de altura dinámica según cantidad de motivos para que no se agrupen ni se vean apretados
                 fig_mot.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos", height=max(400, len(df_mot)*30))
                 st.plotly_chart(fig_mot, use_container_width=True)
                 st.markdown("---")
 
                 # --- 4. PRODUCTOS RECLAMADOS ---
-                st.markdown("#### 4. Productos Reclamados")
+                st.markdown("#### 4. Material de Empaque Reclamado")
                 df_prod = df_analisis['Producto_Afectado'].value_counts().reset_index()
                 df_prod.columns = ['Producto', 'Cantidad']
                 df_prod['%'] = (df_prod['Cantidad'] / total_analisis) * 100
@@ -316,9 +336,9 @@ if file_capa is not None:
 
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Total", total_analisis)
-                c2.metric("Principal Producto", prin_prod)
-                c3.metric("N° Productos Distintos", n_prod)
-                c4.metric("2do Producto", sec_prod)
+                c2.metric("Principal Material", prin_prod)
+                c3.metric("N° Materiales Distintos", n_prod)
+                c4.metric("2do Material", sec_prod)
 
                 fig_prod = px.bar(df_prod.head(15).sort_values('Cantidad', ascending=True), x='%', y='Producto', text='Texto', orientation='h', color_discrete_sequence=['#ff6a00'])
                 fig_prod.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
