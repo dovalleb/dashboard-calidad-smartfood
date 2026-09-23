@@ -27,24 +27,20 @@ hr { border-bottom: 1px solid #ff6a00; box-shadow: 0px 0px 8px #ff6a00; }
 .stTabs [aria-selected="true"] { border-bottom: 2px solid #ff6a00; color: #ff6a00 !important; }
 
 /* --- ESTILOS MEJORADOS PARA LOS BOTONES DE SEGMENTACIÓN (PILLS) --- */
-/* 1. Fondo de botón inactivo */
 div[data-testid="stPills"] button {
     background-color: #ffffff !important;
     border: 1px solid #d1d5db !important;
 }
-/* 2. Forzar texto negro oscuro dentro del botón inactivo */
 div[data-testid="stPills"] button p, 
 div[data-testid="stPills"] button span, 
 div[data-testid="stPills"] button div {
     color: #000000 !important;
     font-weight: 800 !important;
 }
-/* 3. Fondo de botón activo (Seleccionado) */
 div[data-testid="stPills"] button[aria-pressed="true"] {
     background-color: #ff0000 !important;
     border: 1px solid #ff0000 !important;
 }
-/* 4. Forzar texto blanco brillante dentro del botón activo */
 div[data-testid="stPills"] button[aria-pressed="true"] p,
 div[data-testid="stPills"] button[aria-pressed="true"] span,
 div[data-testid="stPills"] button[aria-pressed="true"] div {
@@ -125,8 +121,11 @@ def procesar_sfs(file):
             return 'Interno / Planta'
             
         df['Entidad_Asociada'] = df.apply(determinar_entidad, axis=1)
+        
+        # 3. LÓGICA DINÁMICA DE ENTIDAD (Investigador vs Cliente)
+        df['Entidad_Grafico'] = df.apply(lambda r: r['Investigador Asignado'] if r['Origen_Clasificado'] == 'Proveedor' else r['Entidad_Asociada'], axis=1)
 
-        # 3. Clasificación (REGLA INOCUIDAD)
+        # 4. Clasificación (REGLA INOCUIDAD)
         col_tipo = 'Tipo de Incidente' if 'Tipo de Incidente' in df.columns else 'Categoría del Incidente'
         if col_tipo in df.columns:
             df['Clasificacion_General'] = df[col_tipo].apply(lambda x: 'Inocuidad' if 'seguridad alimentaria' in str(x).strip().lower() else 'Calidad')
@@ -138,7 +137,7 @@ def procesar_sfs(file):
         else:
             df['Estado_Simplificado'] = 'Abierto'
 
-        # 4. Detalles 
+        # 5. Detalles 
         col_prod = 'Product Name' if 'Product Name' in df.columns else 'Producto'
         col_orig_type = 'Origin Type' if 'Origin Type' in df.columns else 'Tipo de Origen'
         if col_prod not in df.columns: df[col_prod] = ''
@@ -182,18 +181,16 @@ if file_capa is not None:
                      (df['Clasificacion_General'].isin(clase_val)) & 
                      (df['Estado_Simplificado'].isin(estado_val))]
 
-        # --- SUB-FILTROS EN CASCADA (AHORA AL 100% DE ANCHO) ---
+        # --- SUB-FILTROS EN CASCADA (AL 100% DE ANCHO) ---
         sel_inv, sel_cli = [], []
         if 'Proveedor' in origen_val or 'Cliente' in origen_val:
             st.markdown("#### 🎯 Sub-Filtros Dinámicos (Se activan según el Origen seleccionado)")
             
-            # Sub-filtro para Proveedores ocupando todo el ancho
             if 'Proveedor' in origen_val:
                 inv_opts = [x for x in df_temp[df_temp['Origen_Clasificado'] == 'Proveedor']['Investigador Asignado'].unique() if str(x).strip() != '']
                 if inv_opts:
                     sel_inv = st.pills("Investigador a cargo (Proveedores)", options=inv_opts, selection_mode="multi")
             
-            # Sub-filtro para Clientes ocupando todo el ancho (se mostrará debajo si ambos están activos)
             if 'Cliente' in origen_val:
                 cli_opts = [x for x in df_temp[df_temp['Origen_Clasificado'] == 'Cliente']['Entidad_Asociada'].unique() if str(x).strip() != '']
                 if cli_opts:
@@ -301,7 +298,8 @@ if file_capa is not None:
                 fig_mot.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
                 fig_mot.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                 fig_mot.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
-                fig_mot.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos")
+                # Ajuste de altura dinámica según cantidad de motivos para que no se agrupen ni se vean apretados
+                fig_mot.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos", height=max(400, len(df_mot)*30))
                 st.plotly_chart(fig_mot, use_container_width=True)
                 st.markdown("---")
 
@@ -326,13 +324,13 @@ if file_capa is not None:
                 fig_prod.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
                 fig_prod.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                 fig_prod.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
-                fig_prod.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos (Top 15)")
+                fig_prod.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos (Top 15)", height=max(400, min(15, len(df_prod))*30))
                 st.plotly_chart(fig_prod, use_container_width=True)
                 st.markdown("---")
 
                 # --- 5. ENTIDADES CON RECLAMOS ---
-                st.markdown("#### 5. Entidades con Reclamos (Clientes y Proveedores)")
-                df_entidades = df_analisis['Entidad_Asociada'].value_counts().reset_index()
+                st.markdown("#### 5. Entidades con Reclamos (Investigadores vs Clientes)")
+                df_entidades = df_analisis['Entidad_Grafico'].value_counts().reset_index()
                 df_entidades.columns = ['Entidad', 'Cantidad']
                 df_entidades['%'] = (df_entidades['Cantidad'] / total_analisis) * 100
                 df_entidades['Texto'] = df_entidades['%'].apply(lambda x: f'{x:.1f}%')
@@ -351,7 +349,7 @@ if file_capa is not None:
                 fig_ent.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
                 fig_ent.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                 fig_ent.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
-                fig_ent.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos por Entidad")
+                fig_ent.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos por Entidad", height=max(300, len(df_entidades)*30))
                 st.plotly_chart(fig_ent, use_container_width=True)
 
 else:
