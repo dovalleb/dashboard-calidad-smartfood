@@ -182,23 +182,22 @@ if file_capa is not None:
                      (df['Clasificacion_General'].isin(clase_val)) & 
                      (df['Estado_Simplificado'].isin(estado_val))]
 
-        # --- SUB-FILTROS EN CASCADA ---
+        # --- SUB-FILTROS EN CASCADA (AHORA AL 100% DE ANCHO) ---
         sel_inv, sel_cli = [], []
         if 'Proveedor' in origen_val or 'Cliente' in origen_val:
             st.markdown("#### 🎯 Sub-Filtros Dinámicos (Se activan según el Origen seleccionado)")
-            sf1, sf2 = st.columns(2)
             
-            with sf1:
-                if 'Proveedor' in origen_val:
-                    inv_opts = [x for x in df_temp[df_temp['Origen_Clasificado'] == 'Proveedor']['Investigador Asignado'].unique() if str(x).strip() != '']
-                    if inv_opts:
-                        sel_inv = st.pills("Investigador a cargo (Proveedores)", options=inv_opts, selection_mode="multi")
+            # Sub-filtro para Proveedores ocupando todo el ancho
+            if 'Proveedor' in origen_val:
+                inv_opts = [x for x in df_temp[df_temp['Origen_Clasificado'] == 'Proveedor']['Investigador Asignado'].unique() if str(x).strip() != '']
+                if inv_opts:
+                    sel_inv = st.pills("Investigador a cargo (Proveedores)", options=inv_opts, selection_mode="multi")
             
-            with sf2:
-                if 'Cliente' in origen_val:
-                    cli_opts = [x for x in df_temp[df_temp['Origen_Clasificado'] == 'Cliente']['Entidad_Asociada'].unique() if str(x).strip() != '']
-                    if cli_opts:
-                        sel_cli = st.pills("Clientes Específicos", options=cli_opts, selection_mode="multi")
+            # Sub-filtro para Clientes ocupando todo el ancho (se mostrará debajo si ambos están activos)
+            if 'Cliente' in origen_val:
+                cli_opts = [x for x in df_temp[df_temp['Origen_Clasificado'] == 'Cliente']['Entidad_Asociada'].unique() if str(x).strip() != '']
+                if cli_opts:
+                    sel_cli = st.pills("Clientes Específicos", options=cli_opts, selection_mode="multi")
 
         df_f = df_temp.copy()
         if sel_inv:
