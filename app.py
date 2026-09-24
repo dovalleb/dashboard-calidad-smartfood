@@ -85,12 +85,21 @@ def procesar_sfs(file):
             df['Mes_Num'] = 99
             df['Mes'] = 'Desconocido'
 
-        for c in ['Organización', 'Nombre del Proveedor', 'Investigador Asignado', 'Nombre del Material de Empaque']:
+        columnas_base = [
+            'Organización', 'Nombre del Proveedor', 'Investigador Asignado', 
+            'Nombre del Material de Empaque', 'Nombre de la Materia Prima', 
+            'Código de Lote', 'Product Name'
+        ]
+        for c in columnas_base:
             if c not in df.columns: df[c] = ''
             
         df['Organización'] = df['Organización'].fillna('')
         df['Nombre del Proveedor'] = df['Nombre del Proveedor'].fillna('')
         df['Investigador Asignado'] = df['Investigador Asignado'].fillna('Sin Asignar')
+        df['Nombre del Material de Empaque'] = df['Nombre del Material de Empaque'].fillna('')
+        df['Nombre de la Materia Prima'] = df['Nombre de la Materia Prima'].fillna('')
+        df['Código de Lote'] = df['Código de Lote'].fillna('')
+        df['Product Name'] = df['Product Name'].fillna('')
 
         # 2. REGLA LÓGICA: COMERCIAL VALORA = PROVEEDOR, RESTO = CLIENTE
         def determinar_origen(r):
@@ -137,8 +146,28 @@ def procesar_sfs(file):
         else:
             df['Estado_Simplificado'] = 'Abierto'
 
-        # 5. Detalles de Producto (Ahora apunta a Nombre del Material de Empaque)
-        df['Producto_Afectado'] = df['Nombre del Material de Empaque'].replace('', pd.NA).fillna('No Especificado')
+        # 5. DETALLES DE PRODUCTO AFECTADO Y LOTE SEGÚN CLASIFICACIÓN
+        def asignar_producto_afectado(r):
+            mp = str(r['Nombre de la Materia Prima']).strip()
+            me = str(r['Nombre del Material de Empaque']).strip()
+            pn = str(r['Product Name']).strip()
+            
+            if r['Clasificacion_General'] == 'Inocuidad':
+                if mp != '': return mp
+                if pn != '': return pn
+            else:
+                if me != '': return me
+                if pn != '': return pn
+            return 'No Especificado'
+
+        def asignar_lote(r):
+            lote = str(r['Código de Lote']).strip()
+            if r['Clasificacion_General'] == 'Inocuidad':
+                return lote if lote != '' else 'Sin Lote'
+            return '-'
+
+        df['Producto_Afectado'] = df.apply(asignar_producto_afectado, axis=1)
+        df['Lote_Materia_Prima'] = df.apply(asignar_lote, axis=1)
         
         # 6. Motivos del reclamo (Limpieza y Traducción a Español)
         col_subcat = 'Subcategoría del Incidente' if 'Subcategoría del Incidente' in df.columns else 'Subcategoría'
@@ -148,7 +177,6 @@ def procesar_sfs(file):
         
         df['Causa_Motivo_Raw'] = df[col_subcat].replace('', pd.NA).fillna(df[col_cat]).fillna('No Definido')
         
-        # Diccionario para forzar traducción de SFS
         diccionario_motivos = {
             'extraneous vegetable material': 'Material Vegetal Extraño',
             'bitter': 'Sabor Amargo',
@@ -243,7 +271,16 @@ if file_capa is not None:
             k2.metric("Eventos Calidad vs Inocuidad", f"{len(df_f[df_f['Clasificacion_General'] == 'Calidad'])} / {len(df_f[df_f['Clasificacion_General'] == 'Inocuidad'])}")
             k3.metric("Tasa de Cierre", f"{(len(df_f[df_f['Estado_Simplificado'] == 'Cerrado'])/len(df_f)*100):.1f}%" if len(df_f)>0 else "0%")
             
-            st.dataframe(df_f[['Incident Number', 'Fecha', 'Mes', 'Origen_Clasificado', 'Entidad_Asociada', 'Investigador Asignado', 'Producto_Afectado', 'Causa_Motivo', 'Clasificacion_General', 'Estado_Simplificado']], use_container_width=True, hide_index=True)
+            st.dataframe(
+                df_f[[
+                    'Incident Number', 'Fecha', 'Mes', 'Origen_Clasificado', 
+                    'Entidad_Asociada', 'Investigador Asignado', 'Producto_Afectado', 
+                    'Lote_Materia_Prima', 'Causa_Motivo', 'Clasificacion_General', 
+                    'Estado_Simplificado'
+                ]], 
+                use_container_width=True, 
+                hide_index=True
+            )
 
         # ==========================================
         # PESTAÑA 2: ANÁLISIS DETALLADO
@@ -324,7 +361,7 @@ if file_capa is not None:
                 st.markdown("---")
 
                 # --- 4. PRODUCTOS RECLAMADOS ---
-                st.markdown("#### 4. Material de Empaque Reclamado")
+                st.markdown("#### 4. Producto / Material Reclamado")
                 df_prod = df_analisis['Producto_Afectado'].value_counts().reset_index()
                 df_prod.columns = ['Producto', 'Cantidad']
                 df_prod['%'] = (df_prod['Cantidad'] / total_analisis) * 100
@@ -336,9 +373,9 @@ if file_capa is not None:
 
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Total", total_analisis)
-                c2.metric("Principal Material", prin_prod)
-                c3.metric("N° Materiales Distintos", n_prod)
-                c4.metric("2do Material", sec_prod)
+                c2.metric("Principal Producto", prin_prod)
+                c3.metric("N° Productos Distintos", n_prod)
+                c4.metric("2do Producto", sec_prod)
 
                 fig_prod = px.bar(df_prod.head(15).sort_values('Cantidad', ascending=True), x='%', y='Producto', text='Texto', orientation='h', color_discrete_sequence=['#ff6a00'])
                 fig_prod.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
