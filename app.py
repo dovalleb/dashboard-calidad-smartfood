@@ -85,53 +85,28 @@ def procesar_sfs(file):
             df['Mes_Num'] = 99
             df['Mes'] = 'Desconocido'
 
+        # Asegurar que todas las columnas base existan
         columnas_base = [
-            'Organización', 'Nombre del Proveedor', 'Investigador Asignado', 
+            'Recibido De', 'Organización', 'Investigador Asignado', 
             'Nombre del Material de Empaque', 'Nombre de la Materia Prima', 
             'Código de Lote', 'Product Name'
         ]
         for c in columnas_base:
             if c not in df.columns: df[c] = ''
             
+        df['Recibido De'] = df['Recibido De'].fillna('')
         df['Organización'] = df['Organización'].fillna('')
-        df['Nombre del Proveedor'] = df['Nombre del Proveedor'].fillna('')
         df['Investigador Asignado'] = df['Investigador Asignado'].fillna('Sin Asignar')
         df['Nombre del Material de Empaque'] = df['Nombre del Material de Empaque'].fillna('')
         df['Nombre de la Materia Prima'] = df['Nombre de la Materia Prima'].fillna('')
         df['Código de Lote'] = df['Código de Lote'].fillna('')
         df['Product Name'] = df['Product Name'].fillna('')
 
-        # 2. REGLA LÓGICA: COMERCIAL VALORA = PROVEEDOR, RESTO = CLIENTE
-        def determinar_origen(r):
-            org = str(r['Organización']).strip().upper()
-            prov = str(r['Nombre del Proveedor']).strip()
-            
-            if 'VALORA' in org:
-                return 'Proveedor'
-            elif org != '':
-                return 'Cliente'
-            elif prov != '':
-                return 'Proveedor'
-            else:
-                return 'Interno'
-                
-        df['Origen_Clasificado'] = df.apply(determinar_origen, axis=1)
-
-        def determinar_entidad(r):
-            org = str(r['Organización']).strip()
-            prov = str(r['Nombre del Proveedor']).strip()
-            
-            if r['Origen_Clasificado'] == 'Cliente':
-                return org
-            elif r['Origen_Clasificado'] == 'Proveedor':
-                if prov != '': return prov
-                if org != '': return org
-                return 'Proveedor No Especificado'
-            return 'Interno / Planta'
-            
-        df['Entidad_Asociada'] = df.apply(determinar_entidad, axis=1)
+        # 2. NUEVA REGLA LÓGICA (SISTEMA SFS ACTUALIZADO)
+        df['Origen_Clasificado'] = df['Recibido De'].apply(lambda x: str(x).strip().capitalize() if str(x).strip() != '' else 'Interno')
+        df['Entidad_Asociada'] = df['Organización'].apply(lambda x: str(x).strip() if str(x).strip() != '' else 'No Especificado')
         
-        # 3. LÓGICA DINÁMICA DE ENTIDAD (Investigador vs Cliente)
+        # 3. LÓGICA DINÁMICA DE ENTIDAD PARA GRÁFICOS (Investigador vs Organización)
         df['Entidad_Grafico'] = df.apply(lambda r: r['Investigador Asignado'] if r['Origen_Clasificado'] == 'Proveedor' else r['Entidad_Asociada'], axis=1)
 
         # 4. Clasificación (REGLA INOCUIDAD)
@@ -373,9 +348,9 @@ if file_capa is not None:
 
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Total", total_analisis)
-                c2.metric("Principal Producto", prin_prod)
-                c3.metric("N° Productos Distintos", n_prod)
-                c4.metric("2do Producto", sec_prod)
+                c2.metric("Principal Material", prin_prod)
+                c3.metric("N° Materiales Distintos", n_prod)
+                c4.metric("2do Material", sec_prod)
 
                 fig_prod = px.bar(df_prod.head(15).sort_values('Cantidad', ascending=True), x='%', y='Producto', text='Texto', orientation='h', color_discrete_sequence=['#ff6a00'])
                 fig_prod.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
