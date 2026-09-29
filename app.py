@@ -53,7 +53,7 @@ div[data-testid="stPills"] button[aria-pressed="true"] div {
 col_logo, col_tit = st.columns([1, 10])
 with col_logo:
     if os.path.exists("LOGO.webp"):
-        st.image("LOGO.webp", use_container_width=True)
+        st.image("LOGO.webp", width="stretch")
 with col_tit:
     st.title("Dashboard Calidad - No conformidades")
 st.markdown("---")
@@ -253,7 +253,7 @@ if file_capa is not None:
                     'Lote_Materia_Prima', 'Causa_Motivo', 'Clasificacion_General', 
                     'Estado_Simplificado'
                 ]], 
-                use_container_width=True, 
+                width="stretch", 
                 hide_index=True
             )
 
@@ -289,7 +289,7 @@ if file_capa is not None:
                 fig_mes.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                 fig_mes.update_yaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                 fig_mes.update_layout(**layout_oscuro, margin=dict(t=20, b=0))
-                st.plotly_chart(fig_mes, use_container_width=True)
+                st.plotly_chart(fig_mes, width="stretch")
                 st.markdown("---")
 
                 # --- 2. CLASIFICACIÓN (Calidad vs Inocuidad) ---
@@ -307,7 +307,7 @@ if file_capa is not None:
                 fig_class = px.pie(df_analisis, names='Clasificacion_General', hole=0, color_discrete_sequence=['#00f3ff', '#ff6a00'])
                 fig_class.update_traces(textinfo='label+percent+value', textfont=dict(size=16, color='white'))
                 fig_class.update_layout(**layout_oscuro, margin=dict(t=20, b=0), legend=dict(font=dict(size=15)))
-                st.plotly_chart(fig_class, use_container_width=True)
+                st.plotly_chart(fig_class, width="stretch")
                 st.markdown("---")
 
                 # --- 3. MOTIVOS DE RECLAMO ---
@@ -332,7 +332,7 @@ if file_capa is not None:
                 fig_mot.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                 fig_mot.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
                 fig_mot.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos", height=max(400, len(df_mot)*30))
-                st.plotly_chart(fig_mot, use_container_width=True)
+                st.plotly_chart(fig_mot, width="stretch")
                 st.markdown("---")
 
                 # --- 4. PRODUCTOS RECLAMADOS ---
@@ -357,7 +357,7 @@ if file_capa is not None:
                 fig_prod.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                 fig_prod.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
                 fig_prod.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos (Top 15)", height=max(400, min(15, len(df_prod))*30))
-                st.plotly_chart(fig_prod, use_container_width=True)
+                st.plotly_chart(fig_prod, width="stretch")
                 st.markdown("---")
 
                 # --- 5. ENTIDADES CON RECLAMOS ---
@@ -382,7 +382,7 @@ if file_capa is not None:
                 fig_ent.update_xaxes(showgrid=False, tickfont=dict(size=13), title_font=dict(size=15))
                 fig_ent.update_yaxes(showgrid=False, tickfont=dict(size=14), title_font=dict(size=15))
                 fig_ent.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=150), xaxis_title="% de Reclamos por Entidad", height=max(300, len(df_entidades)*30))
-                st.plotly_chart(fig_ent, use_container_width=True)
+                st.plotly_chart(fig_ent, width="stretch")
 
 else:
     st.info("💡 Arrastra el archivo 'Base Calidad.xlsx' de Smart Food Safe para generar tu Dashboard.")
