@@ -10,7 +10,6 @@ st.set_page_config(page_title="Dashboard Calidad - Tribu Food", page_icon="📊"
 st.markdown("""
 <style>
 .stApp { background-color: #0a0e17; }
-/* Se aplica color claro a los textos generales, pero SE EXCLUYEN los textos de los Pills */
 .stMarkdown p:not(div[data-testid="stPills"] p), 
 label:not(div[data-testid="stPills"] label), 
 .stTab { color: #e2e8f0 !important; }
@@ -21,12 +20,10 @@ h1, h2, h3, h4 { color: #ff6a00 !important; text-shadow: 0px 0px 12px rgba(255, 
 hr { border-bottom: 1px solid #ff6a00; box-shadow: 0px 0px 8px #ff6a00; }
 .stAlert { background-color: #111827; border: 1px solid #ff6a00; }
 
-/* Estilo para las pestañas */
 .stTabs [data-baseweb="tab-list"] { background-color: #0a0e17; }
 .stTabs [data-baseweb="tab"] { color: #00f3ff; font-weight: bold; font-size: 16px; }
 .stTabs [aria-selected="true"] { border-bottom: 2px solid #ff6a00; color: #ff6a00 !important; }
 
-/* --- ESTILOS MEJORADOS PARA LOS BOTONES DE SEGMENTACIÓN (PILLS) --- */
 div[data-testid="stPills"] button {
     background-color: #ffffff !important;
     border: 1px solid #d1d5db !important;
@@ -89,7 +86,7 @@ def procesar_sfs(file):
         columnas_base = [
             'Recibido De', 'Organización', 'Investigador Asignado', 
             'Nombre del Material de Empaque', 'Nombre de la Materia Prima', 
-            'Código de Lote'
+            'Product Name', 'Nombre del Trabajo en Progreso', 'Código de Lote', 'Descripción'
         ]
         for c in columnas_base:
             if c not in df.columns: df[c] = ''
@@ -97,18 +94,14 @@ def procesar_sfs(file):
         df['Recibido De'] = df['Recibido De'].fillna('')
         df['Organización'] = df['Organización'].fillna('')
         df['Investigador Asignado'] = df['Investigador Asignado'].fillna('Sin Asignar')
-        df['Nombre del Material de Empaque'] = df['Nombre del Material de Empaque'].fillna('')
-        df['Nombre de la Materia Prima'] = df['Nombre de la Materia Prima'].fillna('')
         df['Código de Lote'] = df['Código de Lote'].fillna('')
 
-        # 2. NUEVA REGLA LÓGICA (SISTEMA SFS ACTUALIZADO)
+        # 2. REGLA LÓGICA DE ORIGEN Y ENTIDAD
         df['Origen_Clasificado'] = df['Recibido De'].apply(lambda x: str(x).strip().capitalize() if str(x).strip() != '' else 'Interno')
         df['Entidad_Asociada'] = df['Organización'].apply(lambda x: str(x).strip() if str(x).strip() != '' else 'No Especificado')
-        
-        # 3. LÓGICA DINÁMICA DE ENTIDAD PARA GRÁFICOS (Investigador vs Organización)
         df['Entidad_Grafico'] = df.apply(lambda r: r['Investigador Asignado'] if r['Origen_Clasificado'] == 'Proveedor' else r['Entidad_Asociada'], axis=1)
 
-        # 4. Clasificación (REGLA INOCUIDAD)
+        # 3. Clasificación (REGLA INOCUIDAD)
         col_tipo = 'Tipo de Incidente' if 'Tipo de Incidente' in df.columns else 'Categoría del Incidente'
         if col_tipo in df.columns:
             df['Clasificacion_General'] = df[col_tipo].apply(lambda x: 'Inocuidad' if 'seguridad alimentaria' in str(x).strip().lower() else 'Calidad')
@@ -120,15 +113,26 @@ def procesar_sfs(file):
         else:
             df['Estado_Simplificado'] = 'Abierto'
 
-        # 5. DETALLES DE PRODUCTO AFECTADO (En las dos columnas solicitadas) Y LOTE
+        # 4. PRODUCTO AFECTADO (ESCÁNER INTELIGENTE MULTI-COLUMNA Y DESCRIPCIÓN)
         def asignar_producto_afectado(r):
-            # Limpiamos el texto y eliminamos cualquier rastro de celdas vacías (nan) del Excel
-            mp = str(r['Nombre de la Materia Prima']).replace('nan', '').strip()
-            me = str(r['Nombre del Material de Empaque']).replace('nan', '').strip()
+            cols_producto = ['Nombre de la Materia Prima', 'Nombre del Material de Empaque', 'Product Name', 'Nombre del Trabajo en Progreso']
             
-            # Buscar en las dos columnas
-            if mp != '': return mp
-            if me != '': return me
+            # Buscar en las 4 columnas posibles
+            for c in cols_producto:
+                val = str(r[c]).replace('nan', '').strip()
+                if val != '':
+                    return val
+            
+            # Si todas están vacías, extraer de la Descripción
+            desc = str(r['Descripción']).lower()
+            productos_conocidos = [
+                'mix fiesta', 'granola berries', 'granola', 'stick maní', 'mix cajuna', 
+                'mix frutos del bosque', 'castaña de cajú', 'castaña', 'ciruelas sin carozo', 'ciruela',
+                'huesillo', 'nuez', 'almendra', 'maní'
+            ]
+            for prod in productos_conocidos:
+                if prod in desc:
+                    return prod.title()
             
             return 'No Especificado'
 
@@ -141,7 +145,7 @@ def procesar_sfs(file):
         df['Producto_Afectado'] = df.apply(asignar_producto_afectado, axis=1)
         df['Lote_Materia_Prima'] = df.apply(asignar_lote, axis=1)
         
-        # 6. Motivos del reclamo (Limpieza y Traducción a Español)
+        # 5. Motivos del reclamo (Limpieza y Traducción a Español)
         col_subcat = 'Subcategoría del Incidente' if 'Subcategoría del Incidente' in df.columns else 'Subcategoría'
         col_cat = 'Categoría del Incidente' if 'Categoría del Incidente' in df.columns else 'Categoría'
         if col_subcat not in df.columns: df[col_subcat] = ''
@@ -202,7 +206,6 @@ if file_capa is not None:
                      (df['Clasificacion_General'].isin(clase_val)) & 
                      (df['Estado_Simplificado'].isin(estado_val))]
 
-        # --- SUB-FILTROS EN CASCADA (AL 100% DE ANCHO) ---
         sel_inv, sel_cli = [], []
         if 'Proveedor' in origen_val or 'Cliente' in origen_val:
             st.markdown("#### 🎯 Sub-Filtros Dinámicos (Se activan según el Origen seleccionado)")
@@ -230,12 +233,8 @@ if file_capa is not None:
             font=dict(color='#e2e8f0', size=14)
         )
 
-        # --- PESTAÑAS ---
         tab_global, tab_analisis = st.tabs(["🌐 Visión Global", "📊 Análisis Detallado (Reclamos)"])
 
-        # ==========================================
-        # PESTAÑA 1: VISIÓN GLOBAL
-        # ==========================================
         with tab_global:
             st.markdown("### Resumen General Operativo (Folios Únicos)")
             k1, k2, k3 = st.columns(3)
@@ -254,9 +253,6 @@ if file_capa is not None:
                 hide_index=True
             )
 
-        # ==========================================
-        # PESTAÑA 2: ANÁLISIS DETALLADO
-        # ==========================================
         with tab_analisis:
             df_analisis = df_f.copy()
             
@@ -265,7 +261,6 @@ if file_capa is not None:
             else:
                 total_analisis = len(df_analisis)
                 
-                # --- 1. EVOLUCIÓN MENSUAL ---
                 st.markdown("#### 1. Cantidad de Reclamos por Mes")
                 df_mes = df_analisis.groupby(['Mes_Num', 'Mes']).size().reset_index(name='Cantidad').sort_values('Mes_Num')
                 if not df_mes.empty:
@@ -289,7 +284,6 @@ if file_capa is not None:
                 st.plotly_chart(fig_mes, width="stretch")
                 st.markdown("---")
 
-                # --- 2. CLASIFICACIÓN (Calidad vs Inocuidad) ---
                 st.markdown("#### 2. Clasificación de Reclamos")
                 calidad_cli = len(df_analisis[df_analisis['Clasificacion_General'] == 'Calidad'])
                 inoc_cli = len(df_analisis[df_analisis['Clasificacion_General'] == 'Inocuidad'])
@@ -307,7 +301,6 @@ if file_capa is not None:
                 st.plotly_chart(fig_class, width="stretch")
                 st.markdown("---")
 
-                # --- 3. MOTIVOS DE RECLAMO ---
                 st.markdown("#### 3. Motivos de Reclamo")
                 df_mot = df_analisis['Causa_Motivo'].value_counts().reset_index()
                 df_mot.columns = ['Motivo', 'Cantidad']
@@ -332,7 +325,6 @@ if file_capa is not None:
                 st.plotly_chart(fig_mot, width="stretch")
                 st.markdown("---")
 
-                # --- 4. PRODUCTOS RECLAMADOS ---
                 st.markdown("#### 4. Producto / Material Reclamado")
                 df_prod = df_analisis['Producto_Afectado'].value_counts().reset_index()
                 df_prod.columns = ['Producto', 'Cantidad']
@@ -357,7 +349,6 @@ if file_capa is not None:
                 st.plotly_chart(fig_prod, width="stretch")
                 st.markdown("---")
 
-                # --- 5. ENTIDADES CON RECLAMOS ---
                 st.markdown("#### 5. Entidades con Reclamos (Investigadores vs Clientes)")
                 df_entidades = df_analisis['Entidad_Grafico'].value_counts().reset_index()
                 df_entidades.columns = ['Entidad', 'Cantidad']
