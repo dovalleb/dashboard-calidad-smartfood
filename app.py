@@ -89,7 +89,7 @@ def procesar_sfs(file):
         columnas_base = [
             'Recibido De', 'Organización', 'Investigador Asignado', 
             'Nombre del Material de Empaque', 'Nombre de la Materia Prima', 
-            'Código de Lote', 'Product Name'
+            'Código de Lote'
         ]
         for c in columnas_base:
             if c not in df.columns: df[c] = ''
@@ -100,7 +100,6 @@ def procesar_sfs(file):
         df['Nombre del Material de Empaque'] = df['Nombre del Material de Empaque'].fillna('')
         df['Nombre de la Materia Prima'] = df['Nombre de la Materia Prima'].fillna('')
         df['Código de Lote'] = df['Código de Lote'].fillna('')
-        df['Product Name'] = df['Product Name'].fillna('')
 
         # 2. NUEVA REGLA LÓGICA (SISTEMA SFS ACTUALIZADO)
         df['Origen_Clasificado'] = df['Recibido De'].apply(lambda x: str(x).strip().capitalize() if str(x).strip() != '' else 'Interno')
@@ -121,22 +120,20 @@ def procesar_sfs(file):
         else:
             df['Estado_Simplificado'] = 'Abierto'
 
-        # 5. DETALLES DE PRODUCTO AFECTADO Y LOTE SEGÚN CLASIFICACIÓN
+        # 5. DETALLES DE PRODUCTO AFECTADO (En las dos columnas solicitadas) Y LOTE
         def asignar_producto_afectado(r):
-            mp = str(r['Nombre de la Materia Prima']).strip()
-            me = str(r['Nombre del Material de Empaque']).strip()
-            pn = str(r['Product Name']).strip()
+            # Limpiamos el texto y eliminamos cualquier rastro de celdas vacías (nan) del Excel
+            mp = str(r['Nombre de la Materia Prima']).replace('nan', '').strip()
+            me = str(r['Nombre del Material de Empaque']).replace('nan', '').strip()
             
-            if r['Clasificacion_General'] == 'Inocuidad':
-                if mp != '': return mp
-                if pn != '': return pn
-            else:
-                if me != '': return me
-                if pn != '': return pn
+            # Buscar en las dos columnas
+            if mp != '': return mp
+            if me != '': return me
+            
             return 'No Especificado'
 
         def asignar_lote(r):
-            lote = str(r['Código de Lote']).strip()
+            lote = str(r['Código de Lote']).replace('nan', '').strip()
             if r['Clasificacion_General'] == 'Inocuidad':
                 return lote if lote != '' else 'Sin Lote'
             return '-'
