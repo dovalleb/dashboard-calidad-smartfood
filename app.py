@@ -60,7 +60,7 @@ c_up1, c_up2 = st.columns(2)
 with c_up1:
     file_capa = st.file_uploader("📥 Excel 'Base Calidad' (Reclamos SFS)", type=['xlsx', 'xls'])
 with c_up2:
-    file_train = st.file_uploader("📥 Excel 'Capacitaciones' (RRHH)", type=['xlsx', 'xls'])
+    file_train = st.file_uploader("📥 Excel 'Capacitaciones' (Calidad)", type=['xlsx', 'xls'])
 
 # --- PROCESAMIENTO DE DATOS: RECLAMOS ---
 @st.cache_data(show_spinner=False)
@@ -152,16 +152,14 @@ def procesar_capacitaciones(file):
     try:
         df = pd.read_excel(file)
         if 'Nombre curso' not in df.columns:
-            df = pd.read_excel(file, skiprows=3) # Salta cabecera vacía exportada por SFS
+            df = pd.read_excel(file, skiprows=3)
         
-        # Identificar la columna de participante
         part_col = [c for c in df.columns if 'participante' in c.lower()]
         if part_col:
             df['Participante'] = df[part_col[-1]].astype(str).str.strip().str.title()
         else:
             df['Participante'] = 'Desconocido'
 
-        # Limpiar vacíos
         df = df[~df['Participante'].isin(['Nan', 'None', '', 'Na', 'Nan Nan'])]
 
         df['Curso'] = df.get('Nombre curso', pd.Series(dtype=str)).astype(str).str.strip().str.capitalize()
@@ -193,7 +191,7 @@ def procesar_capacitaciones(file):
 layout_oscuro = dict(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e2e8f0', size=14))
 
 # --- PESTAÑAS PRINCIPALES ---
-tab_global, tab_analisis, tab_capacitaciones = st.tabs(["🌐 Visión Global (Reclamos)", "📊 Análisis Detallado (Reclamos)", "🎓 Capacitaciones (RRHH)"])
+tab_global, tab_analisis, tab_capacitaciones = st.tabs(["🌐 Visión Global (Reclamos)", "📊 Análisis Detallado (Reclamos)", "🎓 Capacitaciones (Calidad)"])
 
 # ==========================================
 # LÓGICA DE PESTAÑAS 1 Y 2 (RECLAMOS)
@@ -280,7 +278,7 @@ else:
 
 
 # ==========================================
-# LÓGICA DE PESTAÑA 3 (CAPACITACIONES)
+# LÓGICA DE PESTAÑA 3 (CAPACITACIONES CALIDAD)
 # ==========================================
 with tab_capacitaciones:
     if file_train is not None:
@@ -307,43 +305,72 @@ with tab_capacitaciones:
                 total_asistencias = len(df_tr_f)
                 promedio = total_asistencias / total_sesiones if total_sesiones > 0 else 0
                 
-                st.markdown("### Indicadores de RRHH")
+                st.markdown("### Indicadores de Capacitaciones (Calidad)")
                 k1, k2, k3 = st.columns(3)
                 k1.metric("Total Sesiones Dictadas", total_sesiones)
-                k2.metric("Total Participaciones", total_asistencias)
+                k2.metric("Total Participantes Capacitados", total_asistencias)
                 k3.metric("Promedio Asistentes x Sesión", f"{promedio:.1f}")
                 
-                # Gráficos de Capacitaciones
+                st.markdown("---")
+                
+                # --- NUEVOS MÓDULOS DE RELATOR Y ASISTENCIA POR SESIÓN ---
                 c_t1, c_t2 = st.columns(2)
                 
                 with c_t1:
-                    st.markdown("#### Evolución de Asistencias por Mes")
-                    df_mes_tr = df_tr_f.groupby(['Mes_Num', 'Mes']).size().reset_index(name='Asistentes').sort_values('Mes_Num')
-                    fig_mes_tr = px.bar(df_mes_tr, x='Mes', y='Asistentes', text='Asistentes', color_discrete_sequence=['#39ff14'])
-                    fig_mes_tr.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
-                    fig_mes_tr.update_layout(**layout_oscuro, margin=dict(t=20, b=0))
-                    st.plotly_chart(fig_mes_tr, width="stretch")
+                    st.markdown("#### 👨‍🏫 Desempeño por Relator")
+                    st.markdown("*(Muestra cuántas sesiones ha realizado cada relator y a cuántas personas ha capacitado en total)*")
+                    df_relator = df_tr_f.groupby('Relator').agg(
+                        Capacitaciones_Realizadas=('Registro_Id', 'nunique'),
+                        Total_Asistentes=('Participante', 'count')
+                    ).reset_index().sort_values('Capacitaciones_Realizadas', ascending=False)
+                    st.dataframe(df_relator, width="stretch", hide_index=True)
                     
-                    st.markdown("#### Top 10 Cursos con Mayor Asistencia")
-                    df_top_cursos = df_tr_f['Curso'].value_counts().reset_index().head(10)
-                    fig_cursos = px.bar(df_top_cursos.sort_values('count', ascending=True), x='count', y='Curso', orientation='h', color_discrete_sequence=['#00f3ff'])
-                    fig_cursos.update_layout(**layout_oscuro, margin=dict(t=20, b=0, l=100))
-                    st.plotly_chart(fig_cursos, width="stretch")
-
                 with c_t2:
-                    st.markdown("#### Top 10 Participantes Activos")
-                    df_top_part = df_tr_f['Participante'].value_counts().reset_index().head(10)
-                    fig_part = px.bar(df_top_part.sort_values('count', ascending=True), x='count', y='Participante', orientation='h', color_discrete_sequence=['#ff6a00'])
-                    fig_part.update_layout(**layout_oscuro, margin=dict(t=20, b=0))
-                    st.plotly_chart(fig_part, width="stretch")
-                    
-                    st.markdown("#### Volumen de Asistentes por Relator")
-                    df_top_relator = df_tr_f['Relator'].value_counts().reset_index()
-                    fig_relator = px.bar(df_top_relator.sort_values('count', ascending=True), x='count', y='Relator', orientation='h', color_discrete_sequence=['#e2e8f0'])
-                    fig_relator.update_layout(**layout_oscuro, margin=dict(t=20, b=0))
-                    st.plotly_chart(fig_relator, width="stretch")
+                    st.markdown("#### 📝 Asistencia por Sesión")
+                    st.markdown("*(Muestra cada capacitación específica dictada y su número exacto de asistentes)*")
+                    df_sesiones = df_tr_f.groupby(['Fecha_Limpia', 'Curso', 'Relator', 'Registro_Id']).agg(
+                        Asistentes=('Participante', 'count')
+                    ).reset_index().sort_values('Fecha_Limpia', ascending=False)
+                    # Ocultar el Registro_Id interno para que se vea más limpio
+                    st.dataframe(df_sesiones[['Fecha_Limpia', 'Curso', 'Relator', 'Asistentes']].rename(columns={'Fecha_Limpia': 'Fecha'}), width="stretch", hide_index=True)
 
-                st.markdown("#### Detalle Operativo de Capacitaciones")
-                st.dataframe(df_tr_f[['Fecha_Limpia', 'Mes', 'Curso', 'Temas', 'Relator', 'Participante']], width="stretch", hide_index=True)
+                st.markdown("---")
+                
+                # --- MÓDULOS DE MATRIZ Y PERFIL INDIVIDUAL ---
+                st.markdown("#### 👤 Auditoría Individual de Capacitaciones")
+                
+                lista_trabajadores = sorted(df_tr_f['Participante'].unique())
+                trabajador_sel = st.selectbox("Selecciona un trabajador para ver su estado:", lista_trabajadores)
+                
+                if trabajador_sel:
+                    todos_los_cursos = set(df_tr_f['Curso'].unique())
+                    cursos_trabajador = set(df_tr_f[df_tr_f['Participante'] == trabajador_sel]['Curso'].unique())
+                    cursos_faltantes = todos_los_cursos - cursos_trabajador
+                    
+                    c_w1, c_w2 = st.columns(2)
+                    with c_w1:
+                        st.success(f"✅ **Cursos Realizados ({len(cursos_trabajador)})**")
+                        for c in sorted(list(cursos_trabajador)):
+                            st.write(f"- {c}")
+                    with c_w2:
+                        if len(cursos_faltantes) > 0:
+                            st.error(f"❌ **Cursos Pendientes / No Realizados ({len(cursos_faltantes)})**")
+                            for c in sorted(list(cursos_faltantes)):
+                                st.write(f"- {c}")
+                        else:
+                            st.info("🎉 ¡Este trabajador tiene todas las capacitaciones al día!")
+
+                st.markdown("---")
+                st.markdown("#### 📊 Matriz General de Cumplimiento")
+                st.markdown("*(Muestra qué cursos ha realizado cada trabajador basado en el total de cursos filtrados)*")
+                
+                matriz = pd.crosstab(df_tr_f['Participante'], df_tr_f['Curso'])
+                matriz_bool = (matriz > 0)
+                matriz_iconos = matriz_bool.replace({True: "✅", False: "❌"})
+                
+                pct = (matriz_bool.sum(axis=1) / len(matriz.columns)) * 100
+                matriz_iconos.insert(0, '% de Cumplimiento', pct.apply(lambda x: f"{x:.1f}%"))
+                
+                st.dataframe(matriz_iconos, width="stretch")
     else:
         st.info("Sube el archivo 'Capacitaciones' en la zona superior para ver este panel.")
