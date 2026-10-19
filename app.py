@@ -160,7 +160,8 @@ def procesar_capacitaciones(file):
         else:
             df['Participante'] = 'Desconocido'
 
-        df = df[~df['Participante'].isin(['Nan', 'None', '', 'Na', 'Nan Nan'])]
+        # Limpieza más fuerte para evitar el error de floats o vacíos
+        df = df[~df['Participante'].isin(['Nan', 'None', '', 'Na', 'Nan Nan', 'Nat', 'NaT'])]
 
         df['Curso'] = df.get('Nombre curso', pd.Series(dtype=str)).astype(str).str.strip().str.capitalize()
         df['Relator'] = df.get('Nombre relator', pd.Series(dtype=str)).astype(str).str.strip().str.title()
@@ -242,8 +243,6 @@ if file_capa is not None:
             if df_f.empty:
                 st.warning("No hay datos de reclamos con los filtros actuales.")
             else:
-                total_a = len(df_f)
-                
                 st.markdown("#### 1. Evolución Mensual")
                 df_mes_a = df_f.groupby(['Mes_Num', 'Mes']).size().reset_index(name='Cantidad').sort_values('Mes_Num')
                 fig_mes_a = px.bar(df_mes_a, x='Mes', y='Cantidad', text='Cantidad', color_discrete_sequence=['#00f3ff'])
@@ -313,33 +312,45 @@ with tab_capacitaciones:
                 
                 st.markdown("---")
                 
-                # --- NUEVOS MÓDULOS DE RELATOR Y ASISTENCIA POR SESIÓN ---
+                # --- GRÁFICOS DE COLUMNAS (RELATOR Y SESIÓN) ---
                 c_t1, c_t2 = st.columns(2)
                 
                 with c_t1:
-                    st.markdown("#### 👨‍🏫 Desempeño por Relator")
-                    st.markdown("*(Muestra cuántas sesiones ha realizado cada relator y a cuántas personas ha capacitado en total)*")
+                    st.markdown("#### 👨‍🏫 Desempeño por Relator (N° Asistentes)")
                     df_relator = df_tr_f.groupby('Relator').agg(
                         Capacitaciones_Realizadas=('Registro_Id', 'nunique'),
                         Total_Asistentes=('Participante', 'count')
-                    ).reset_index().sort_values('Capacitaciones_Realizadas', ascending=False)
-                    st.dataframe(df_relator, width="stretch", hide_index=True)
+                    ).reset_index().sort_values('Total_Asistentes', ascending=False)
+                    
+                    fig_relator = px.bar(df_relator, x='Relator', y='Total_Asistentes', text='Total_Asistentes', 
+                                         hover_data=['Capacitaciones_Realizadas'], color_discrete_sequence=['#00f3ff'])
+                    fig_relator.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
+                    fig_relator.update_layout(**layout_oscuro, margin=dict(t=20, b=0), xaxis_title="Relator", yaxis_title="Total Asistentes")
+                    st.plotly_chart(fig_relator, width="stretch")
                     
                 with c_t2:
-                    st.markdown("#### 📝 Asistencia por Sesión")
-                    st.markdown("*(Muestra cada capacitación específica dictada y su número exacto de asistentes)*")
+                    st.markdown("#### 📝 Asistencia por Sesión Cronológica")
                     df_sesiones = df_tr_f.groupby(['Fecha_Limpia', 'Curso', 'Relator', 'Registro_Id']).agg(
                         Asistentes=('Participante', 'count')
-                    ).reset_index().sort_values('Fecha_Limpia', ascending=False)
-                    # Ocultar el Registro_Id interno para que se vea más limpio
-                    st.dataframe(df_sesiones[['Fecha_Limpia', 'Curso', 'Relator', 'Asistentes']].rename(columns={'Fecha_Limpia': 'Fecha'}), width="stretch", hide_index=True)
+                    ).reset_index().sort_values('Fecha_Limpia', ascending=True)
+                    
+                    # Crear etiqueta abreviada para que el gráfico no se vea saturado
+                    df_sesiones['Sesion_Label'] = df_sesiones['Fecha_Limpia'].astype(str) + " (" + df_sesiones['Relator'].str.split().str[0] + ")"
+                    
+                    fig_sesiones = px.bar(df_sesiones, x='Sesion_Label', y='Asistentes', text='Asistentes',
+                                          hover_data=['Curso', 'Relator', 'Fecha_Limpia'], color_discrete_sequence=['#ff6a00'])
+                    fig_sesiones.update_traces(textposition='outside', textfont=dict(size=14, color='white'))
+                    fig_sesiones.update_layout(**layout_oscuro, margin=dict(t=20, b=0), xaxis_title="Sesión (Fecha y Relator)", yaxis_title="N° Asistentes")
+                    st.plotly_chart(fig_sesiones, width="stretch")
 
                 st.markdown("---")
                 
                 # --- MÓDULOS DE MATRIZ Y PERFIL INDIVIDUAL ---
                 st.markdown("#### 👤 Auditoría Individual de Capacitaciones")
                 
-                lista_trabajadores = sorted(df_tr_f['Participante'].unique())
+                # SOLUCIÓN DEFINITIVA AL ERROR DE ORDENAMIENTO (Conversión segura a texto y eliminación de vacíos)
+                lista_trabajadores = sorted([str(x).strip() for x in df_tr_f['Participante'].unique() if len(str(x).strip()) > 2 and str(x).strip().lower() not in ['nan', 'none', 'nat']])
+                
                 trabajador_sel = st.selectbox("Selecciona un trabajador para ver su estado:", lista_trabajadores)
                 
                 if trabajador_sel:
