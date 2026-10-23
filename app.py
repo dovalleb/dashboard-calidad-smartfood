@@ -160,7 +160,7 @@ def procesar_capacitaciones(file):
         else:
             df['Participante'] = 'Desconocido'
 
-        # Limpieza más fuerte para evitar el error de floats o vacíos
+        # Limpieza para evitar el error de floats o vacíos
         df = df[~df['Participante'].isin(['Nan', 'None', '', 'Na', 'Nan Nan', 'Nat', 'NaT'])]
 
         df['Curso'] = df.get('Nombre curso', pd.Series(dtype=str)).astype(str).str.strip().str.capitalize()
@@ -284,12 +284,12 @@ with tab_capacitaciones:
         df_tr = procesar_capacitaciones(file_train)
         if df_tr is not None and not df_tr.empty:
             st.markdown("### 🔍 Filtros de Capacitaciones")
-            f_tr1, f_tr2, f_tr3 = st.columns(3)
             
+            # --- FILTROS APILADOS VERTICALMENTE PARA EVITAR CORTES ---
             meses_tr = df_tr[['Mes_Num', 'Mes']].drop_duplicates().sort_values('Mes_Num')['Mes'].tolist()
-            sel_mes_tr = f_tr1.pills("Mes (Capacitaciones)", options=meses_tr, selection_mode="multi")
-            sel_curso_tr = f_tr2.pills("Curso", options=df_tr['Curso'].unique(), selection_mode="multi")
-            sel_relator_tr = f_tr3.pills("Relator", options=df_tr['Relator'].unique(), selection_mode="multi")
+            sel_mes_tr = st.pills("Mes (Capacitaciones)", options=meses_tr, selection_mode="multi")
+            sel_curso_tr = st.pills("Curso", options=df_tr['Curso'].unique(), selection_mode="multi")
+            sel_relator_tr = st.pills("Relator", options=df_tr['Relator'].unique(), selection_mode="multi")
             
             mes_tr_val = sel_mes_tr if sel_mes_tr else meses_tr
             curso_tr_val = sel_curso_tr if sel_curso_tr else df_tr['Curso'].unique()
@@ -348,7 +348,6 @@ with tab_capacitaciones:
                 # --- MÓDULOS DE MATRIZ Y PERFIL INDIVIDUAL ---
                 st.markdown("#### 👤 Auditoría Individual de Capacitaciones")
                 
-                # SOLUCIÓN DEFINITIVA AL ERROR DE ORDENAMIENTO (Conversión segura a texto y eliminación de vacíos)
                 lista_trabajadores = sorted([str(x).strip() for x in df_tr_f['Participante'].unique() if len(str(x).strip()) > 2 and str(x).strip().lower() not in ['nan', 'none', 'nat']])
                 
                 trabajador_sel = st.selectbox("Selecciona un trabajador para ver su estado:", lista_trabajadores)
