@@ -67,6 +67,7 @@ with c_up2:
 def procesar_sfs(file):
     try:
         df = pd.read_excel(file)
+        
         if 'Incident Number' in df.columns:
             df['Incident Number'] = df['Incident Number'].astype(str).str.strip()
             df = df.drop_duplicates(subset=['Incident Number'], keep='first')
@@ -83,11 +84,13 @@ def procesar_sfs(file):
             df['Mes_Num'] = 99
             df['Mes'] = 'Desconocido'
 
-        columnas_base = ['Recibido De', 'Organización', 'Investigador Asignado', 'Nombre del Material de Empaque', 
+        # ESCUDO ANTI-ERRORES: Forzamos la creación de todas las columnas si el usuario sube un archivo equivocado
+        columnas_base = ['Incident Number', 'Recibido De', 'Organización', 'Investigador Asignado', 'Nombre del Material de Empaque', 
                          'Nombre de la Materia Prima', 'Product Name', 'Nombre del Trabajo en Progreso', 'Código de Lote', 'Descripción']
         for c in columnas_base:
             if c not in df.columns: df[c] = ''
             
+        df['Incident Number'] = df['Incident Number'].fillna('Sin Folio')
         df['Recibido De'] = df['Recibido De'].fillna('')
         df['Organización'] = df['Organización'].fillna('')
         df['Investigador Asignado'] = df['Investigador Asignado'].fillna('Sin Asignar')
@@ -143,7 +146,7 @@ def procesar_sfs(file):
         df['Causa_Motivo'] = df['Causa_Motivo_Raw'].apply(lambda x: diccionario_motivos.get(str(x).strip().lower(), str(x).strip()))
         return df
     except Exception as e:
-        st.error(f"Error procesando el archivo de Reclamos: {e}")
+        st.error(f"Error procesando el archivo de Reclamos. Verifica que sea el correcto. Detalle: {e}")
         return None
 
 # --- PROCESAMIENTO DE DATOS: CAPACITACIONES ---
@@ -160,7 +163,6 @@ def procesar_capacitaciones(file):
         else:
             df['Participante'] = 'Desconocido'
 
-        # Limpieza para evitar el error de floats o vacíos
         df = df[~df['Participante'].isin(['Nan', 'None', '', 'Na', 'Nan Nan', 'Nat', 'NaT'])]
 
         df['Curso'] = df.get('Nombre curso', pd.Series(dtype=str)).astype(str).str.strip().str.capitalize()
@@ -186,7 +188,7 @@ def procesar_capacitaciones(file):
 
         return df
     except Exception as e:
-        st.error(f"Error procesando el archivo de Capacitaciones: {e}")
+        st.error(f"Error procesando el archivo de Capacitaciones. Verifica que sea el correcto. Detalle: {e}")
         return None
 
 layout_oscuro = dict(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#e2e8f0', size=14))
@@ -285,7 +287,6 @@ with tab_capacitaciones:
         if df_tr is not None and not df_tr.empty:
             st.markdown("### 🔍 Filtros de Capacitaciones")
             
-            # --- FILTROS APILADOS VERTICALMENTE PARA EVITAR CORTES ---
             meses_tr = df_tr[['Mes_Num', 'Mes']].drop_duplicates().sort_values('Mes_Num')['Mes'].tolist()
             sel_mes_tr = st.pills("Mes (Capacitaciones)", options=meses_tr, selection_mode="multi")
             sel_curso_tr = st.pills("Curso", options=df_tr['Curso'].unique(), selection_mode="multi")
@@ -312,7 +313,6 @@ with tab_capacitaciones:
                 
                 st.markdown("---")
                 
-                # --- GRÁFICOS DE COLUMNAS (RELATOR Y SESIÓN) ---
                 c_t1, c_t2 = st.columns(2)
                 
                 with c_t1:
@@ -334,7 +334,6 @@ with tab_capacitaciones:
                         Asistentes=('Participante', 'count')
                     ).reset_index().sort_values('Fecha_Limpia', ascending=True)
                     
-                    # Crear etiqueta abreviada para que el gráfico no se vea saturado
                     df_sesiones['Sesion_Label'] = df_sesiones['Fecha_Limpia'].astype(str) + " (" + df_sesiones['Relator'].str.split().str[0] + ")"
                     
                     fig_sesiones = px.bar(df_sesiones, x='Sesion_Label', y='Asistentes', text='Asistentes',
@@ -345,7 +344,6 @@ with tab_capacitaciones:
 
                 st.markdown("---")
                 
-                # --- MÓDULOS DE MATRIZ Y PERFIL INDIVIDUAL ---
                 st.markdown("#### 👤 Auditoría Individual de Capacitaciones")
                 
                 lista_trabajadores = sorted([str(x).strip() for x in df_tr_f['Participante'].unique() if len(str(x).strip()) > 2 and str(x).strip().lower() not in ['nan', 'none', 'nat']])
