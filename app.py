@@ -264,4 +264,283 @@ t_g, t_a, t_s, t_c = st.tabs([
     "Global", "Graficos", "SLA", "Capacitaciones"
 ])
 
-if f_capa is not
+if f_capa is not None:
+    df = procesar_sfs(f_capa)
+    if df is not None and not df.empty:
+        with t_g:
+            f1, f2, f3, f4 = st.columns(4)
+            
+            dm = df[['Mes_Num', 'Mes']].drop_duplicates()
+            dm = dm.sort_values('Mes_Num')
+            m_uni = dm['Mes'].tolist()
+            
+            f_mes = f1.pills("Mes", options=m_uni, selection_mode="multi")
+            
+            o_uni = df['Origen_Clasificado'].unique()
+            f_ori = f2.pills("Origen", options=o_uni, selection_mode="multi")
+            
+            c_uni = df['Clasificacion_General'].unique()
+            f_cla = f3.pills("Clase", options=c_uni, selection_mode="multi")
+            
+            e_uni = df['Estado_Simplificado'].unique()
+            f_est = f4.pills("Estado", options=e_uni, selection_mode="multi")
+            
+            v_mes = f_mes if f_mes else m_uni
+            v_ori = f_ori if f_ori else o_uni
+            v_cla = f_cla if f_cla else c_uni
+            v_est = f_est if f_est else e_uni
+            
+            c1 = df['Mes'].isin(v_mes)
+            c2 = df['Origen_Clasificado'].isin(v_ori)
+            c3 = df['Clasificacion_General'].isin(v_cla)
+            c4 = df['Estado_Simplificado'].isin(v_est)
+            
+            df_t = df[c1 & c2 & c3 & c4]
+
+            s_inv, s_cli = [], []
+            if 'Proveedor' in v_ori or 'Cliente' in v_ori:
+                if 'Proveedor' in v_ori:
+                    i_r = df_t[df_t['Origen_Clasificado'] == 'Proveedor']
+                    i_o = [x for x in i_r['Investigador Asignado'].unique() if x]
+                    if i_o: 
+                        s_inv = st.pills("Inv", options=i_o, selection_mode="multi")
+                if 'Cliente' in v_ori:
+                    c_r = df_t[df_t['Origen_Clasificado'] == 'Cliente']
+                    c_o = [x for x in c_r['Entidad_Asociada'].unique() if x]
+                    if c_o: 
+                        s_cli = st.pills("Cli", options=c_o, selection_mode="multi")
+
+            df_f = df_t.copy()
+            
+            if s_inv: 
+                cp = (df_f['Origen_Clasificado'] == 'Proveedor')
+                cp = cp & (~df_f['Investigador Asignado'].isin(s_inv))
+                df_f = df_f[~cp]
+                
+            if s_cli: 
+                cc = (df_f['Origen_Clasificado'] == 'Cliente')
+                cc = cc & (~df_f['Entidad_Asociada'].isin(s_cli))
+                df_f = df_f[~cc]
+
+            df_u = df_f.drop_duplicates(subset=['Incident Number'])
+
+            k1, k2, k3 = st.columns(3)
+            
+            t_u = len(df_u)
+            k1.metric("Hallazgos", t_u)
+            
+            t_cal = len(df_u[df_u['Clasificacion_General'] == 'Calidad'])
+            t_ino = len(df_u[df_u['Clasificacion_General'] == 'Inocuidad'])
+            k2.metric("Calidad / Inocuidad", f"{t_cal} / {t_ino}")
+            
+            t_cer = len(df_u[df_u['Estado_Simplificado'] == 'Cerrado'])
+            tc = (t_cer / t_u * 100) if t_u > 0 else 0
+            k3.metric("Tasa Cierre", f"{tc:.1f}%")
+            
+            cm = [
+                'Incident Number', 'Fecha', 'Mes', 'Origen_Clasificado', 
+                'Entidad_Asociada', 'Investigador Asignado', 'Producto_Afectado', 
+                'Lote_Materia_Prima', 'Causa_Motivo', 'Estado_SLA'
+            ]
+            st.dataframe(df_u[cm], width="stretch", hide_index=True)
+            
+            with st.expander("Ver Historial Completo"):
+                cc = ['Incident Number', 'Fecha', 'Descripción', 'Causa_Motivo']
+                st.dataframe(df_f[cc], width="stretch", hide_index=True)
+
+        with t_a:
+            if df_u.empty:
+                st.warning("Sin datos.")
+            else:
+                d_m = df_u.groupby(['Mes_Num', 'Mes']).size().reset_index(name='C')
+                d_m = d_m.sort_values('Mes_Num')
+                fg_m = px.bar(
+                    d_m, x='Mes', y='C', text='C', 
+                    color_discrete_sequence=['#00f3ff']
+                )
+                fg_m.update_traces(textposition='outside')
+                fg_m.update_layout(**lo, margin=dict(t=20, b=0))
+                st.plotly_chart(fg_m, width="stretch")
+                
+                ca, cb = st.columns(2)
+                with ca:
+                    fg_c = px.pie(
+                        df_u, names='Clasificacion_General', hole=0, 
+                        color_discrete_sequence=['#00f3ff', '#ff6a00']
+                    )
+                    fg_c.update_traces(textinfo='label+percent')
+                    fg_c.update_layout(**lo, margin=dict(t=20, b=0))
+                    st.plotly_chart(fg_c, width="stretch")
+                
+                with cb:
+                    d_mo = df_u['Causa_Motivo'].value_counts().reset_index().head(5)
+                    fg_mo = px.bar(
+                        d_mo.sort_values('count', ascending=True), 
+                        x='count', y='Causa_Motivo', orientation='h', 
+                        color_discrete_sequence=['#00f3ff']
+                    )
+                    fg_mo.update_layout(**lo, margin=dict(t=20, b=0))
+                    st.plotly_chart(fg_mo, width="stretch")
+                
+                d_pr = df_u['Producto_Afectado'].value_counts().reset_index().head(10)
+                fg_pr = px.bar(
+                    d_pr.sort_values('count', ascending=True), 
+                    x='count', y='Producto_Afectado', orientation='h', 
+                    color_discrete_sequence=['#ff6a00']
+                )
+                fg_pr.update_layout(**lo, margin=dict(t=20, b=0))
+                st.plotly_chart(fg_pr, width="stretch")
+
+        with t_s:
+            if df_u.empty:
+                st.warning("Sin datos SLA.")
+            else:
+                d_ab = df_u[df_u['Estado_Simplificado'] == 'Abierto']
+                
+                s1, s2, s3 = st.columns(3)
+                s1.metric("Abiertos", len(d_ab))
+                
+                atr = len(df_u[df_u['Estado_SLA'].str.contains('Atrasado', na=False)])
+                s2.metric("Atrasados", atr)
+                
+                pm = round(d_ab['Dias_Pendientes'].mean()) if len(d_ab) > 0 else 0
+                s3.metric("Promedio Dias", pm)
+                
+                c_s1, c_s2 = st.columns(2)
+                
+                with c_s1:
+                    cs = {
+                        'A Tiempo': '#39ff14', 
+                        'Atrasado': '#ff0000',
+                        'Cerrado': '#39ff14',
+                        'Pendiente': '#888888'
+                    }
+                    fg_s = px.pie(
+                        df_u, names='Estado_SLA', hole=0.3, 
+                        color='Estado_SLA', color_discrete_map=cs
+                    )
+                    fg_s.update_traces(textinfo='label+percent')
+                    fg_s.update_layout(**lo, margin=dict(t=20, b=0))
+                    st.plotly_chart(fg_s, width="stretch")
+
+                with c_s2:
+                    if not d_ab.empty:
+                        da = d_ab.groupby('Entidad_Grafico')['Dias_Pendientes']
+                        da = da.mean().reset_index()
+                        da = da.sort_values('Dias_Pendientes', ascending=False).head(10)
+                        
+                        f_ab = px.bar(
+                            da.sort_values('Dias_Pendientes', ascending=True), 
+                            x='Dias_Pendientes', y='Entidad_Grafico', 
+                            text='Dias_Pendientes', orientation='h', 
+                            color_discrete_sequence=['#ff0000']
+                        )
+                        f_ab.update_layout(**lo, margin=dict(t=20, b=0))
+                        st.plotly_chart(f_ab, width="stretch")
+                
+                cols_c = [
+                    'Incident Number', 'Entidad_Grafico', 
+                    'Producto_Afectado', 'Dias_Pendientes'
+                ]
+                dc = d_ab[cols_c].sort_values('Dias_Pendientes', ascending=False)
+                st.dataframe(dc, width="stretch", hide_index=True)
+
+with t_c:
+    if f_train is not None:
+        d_tr = procesar_capacitaciones(f_train)
+        if d_tr is not None and not d_tr.empty:
+            
+            d_mt = d_tr[['Mes_Num', 'Mes']].drop_duplicates()
+            d_mt = d_mt.sort_values('Mes_Num')
+            mt = d_mt['Mes'].tolist()
+            
+            s_mt = st.pills("Mes", options=mt, selection_mode="multi")
+            cu = d_tr['Curso'].unique()
+            s_cu = st.pills("Curso", options=cu, selection_mode="multi")
+            ru = d_tr['Relator'].unique()
+            s_ru = st.pills("Relator", options=ru, selection_mode="multi")
+            
+            v_mt = s_mt if s_mt else mt
+            v_cu = s_cu if s_cu else cu
+            v_ru = s_ru if s_ru else ru
+            
+            c1t = d_tr['Mes'].isin(v_mt)
+            c2t = d_tr['Curso'].isin(v_cu)
+            c3t = d_tr['Relator'].isin(v_ru)
+            
+            dtf = d_tr[c1t & c2t & c3t]
+            
+            if dtf.empty:
+                st.warning("Sin asistencias.")
+            else:
+                ts = dtf['Registro_Id'].nunique()
+                ta = len(dtf)
+                
+                k1, k2, k3 = st.columns(3)
+                k1.metric("Sesiones", ts)
+                k2.metric("Participantes", ta)
+                k3.metric("Promedio Asistentes", f"{(ta/ts if ts>0 else 0):.1f}")
+                
+                ct1, ct2 = st.columns(2)
+                with ct1:
+                    dr = dtf.groupby('Relator').agg(
+                        CR=('Registro_Id', 'nunique'), 
+                        TA=('Participante', 'count')
+                    ).reset_index().sort_values('TA', ascending=False)
+                    
+                    fr = px.bar(
+                        dr, x='Relator', y='TA', text='TA', 
+                        color_discrete_sequence=['#00f3ff']
+                    )
+                    fr.update_traces(textposition='outside')
+                    fr.update_layout(**lo, margin=dict(t=20, b=0))
+                    st.plotly_chart(fr, width="stretch")
+                    
+                with ct2:
+                    ds = dtf.groupby(['Fecha_Limpia', 'Curso', 'Relator']).agg(
+                        A=('Participante', 'count')
+                    ).reset_index().sort_values('Fecha_Limpia')
+                    
+                    def c_lb(r):
+                        f = str(r['Fecha_Limpia'])
+                        rl = str(r['Relator']).split()[0]
+                        return f"{f} ({rl})"
+                        
+                    ds['L'] = ds.apply(c_lb, axis=1)
+                    fs = px.bar(
+                        ds, x='L', y='A', text='A', 
+                        color_discrete_sequence=['#ff6a00']
+                    )
+                    fs.update_traces(textposition='outside')
+                    fs.update_layout(**lo, margin=dict(t=20, b=0))
+                    st.plotly_chart(fs, width="stretch")
+
+                ltr_raw = [str(x).strip() for x in dtf['Participante'].unique()]
+                ltr = sorted([x for x in ltr_raw if len(x)>2 and x.lower()!='nan'])
+                
+                tsel = st.selectbox("Trabajador:", ltr)
+                
+                if tsel:
+                    tc = set(dtf['Curso'].unique())
+                    ctr = set(dtf[dtf['Participante'] == tsel]['Curso'].unique())
+                    cf = tc - ctr
+                    
+                    cw1, cw2 = st.columns(2)
+                    with cw1:
+                        st.success(f"Realizados ({len(ctr)})")
+                        for c in sorted(list(ctr)): st.write(f"- {c}")
+                    with cw2:
+                        if len(cf) > 0:
+                            st.error(f"Pendientes ({len(cf)})")
+                            for c in sorted(list(cf)): st.write(f"- {c}")
+                        else: st.info("Al dia!")
+
+                mb = (pd.crosstab(dtf['Participante'], dtf['Curso']) > 0)
+                mi = mb.replace({True: "OK", False: "Falta"})
+                
+                tcol = len(mb.columns)
+                def cpct(r):
+                    return f"{(r.sum()/tcol*100):.1f}%"
+                    
+                mi.insert(0, 'Cumplimiento', mb.apply(cpct, axis=1))
+                st.dataframe(mi, width="stretch")
