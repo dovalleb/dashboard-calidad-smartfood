@@ -55,6 +55,15 @@ with c_up2:
 def procesar_sfs(file):
     try:
         df = pd.read_excel(file)
+        
+        # --- AUTO-RENOMBRADO PARA COMPATIBILIDAD DE VERSIONES SFS ---
+        if 'Número de Incidente' in df.columns and 'Incident Number' not in df.columns:
+            df.rename(columns={'Número de Incidente': 'Incident Number'}, inplace=True)
+            
+        if 'Fecha de finalización' in df.columns and 'Fecha de Finalización' not in df.columns:
+            df.rename(columns={'Fecha de finalización': 'Fecha de Finalización'}, inplace=True)
+        # -------------------------------------------------------------
+        
         c_base = [
             'Incident Number', 'Recibido De', 'Organización', 
             'Investigador Asignado', 'Nombre del Material de Empaque', 
@@ -65,6 +74,7 @@ def procesar_sfs(file):
             'Fecha Límite de la Investigación', 
             'Fecha de Finalización'
         ]
+        
         for c in c_base:
             if c not in df.columns: 
                 df[c] = ''
@@ -152,14 +162,16 @@ def procesar_sfs(file):
 
         def a_prod(r):
             cols = [
+                'Nombre del Producto Terminado',
                 'Nombre de la Materia Prima', 
                 'Nombre del Material de Empaque', 
                 'Product Name', 
                 'Nombre del Trabajo en Progreso'
             ]
             for c in cols:
-                v = str(r[c]).replace('nan', '').strip()
-                if v != '': return v
+                if c in df.columns:
+                    v = str(r[c]).replace('nan', '').strip()
+                    if v != '': return v
             
             desc = str(r['Descripción']).lower()
             prods = [
@@ -337,210 +349,4 @@ if f_capa is not None:
             tc = (t_cer / t_u * 100) if t_u > 0 else 0
             k3.metric("Tasa Cierre", f"{tc:.1f}%")
             
-            cm = [
-                'Incident Number', 'Fecha', 'Mes', 'Origen_Clasificado', 
-                'Entidad_Asociada', 'Investigador Asignado', 'Producto_Afectado', 
-                'Lote_Materia_Prima', 'Causa_Motivo', 'Estado_SLA'
-            ]
-            st.dataframe(df_u[cm], width="stretch", hide_index=True)
-            
-            with st.expander("Ver Historial Completo"):
-                cc = ['Incident Number', 'Fecha', 'Descripción', 'Causa_Motivo']
-                st.dataframe(df_f[cc], width="stretch", hide_index=True)
-
-        with t_a:
-            if df_u.empty:
-                st.warning("Sin datos.")
-            else:
-                d_m = df_u.groupby(['Mes_Num', 'Mes']).size().reset_index(name='C')
-                d_m = d_m.sort_values('Mes_Num')
-                fg_m = px.bar(
-                    d_m, x='Mes', y='C', text='C', 
-                    color_discrete_sequence=['#00f3ff']
-                )
-                fg_m.update_traces(textposition='outside')
-                fg_m.update_layout(**lo, margin=dict(t=20, b=0))
-                st.plotly_chart(fg_m, width="stretch")
-                
-                ca, cb = st.columns(2)
-                with ca:
-                    fg_c = px.pie(
-                        df_u, names='Clasificacion_General', hole=0, 
-                        color_discrete_sequence=['#00f3ff', '#ff6a00']
-                    )
-                    fg_c.update_traces(textinfo='label+percent')
-                    fg_c.update_layout(**lo, margin=dict(t=20, b=0))
-                    st.plotly_chart(fg_c, width="stretch")
-                
-                with cb:
-                    d_mo = df_u['Causa_Motivo'].value_counts().reset_index().head(5)
-                    fg_mo = px.bar(
-                        d_mo.sort_values('count', ascending=True), 
-                        x='count', y='Causa_Motivo', orientation='h', 
-                        color_discrete_sequence=['#00f3ff']
-                    )
-                    fg_mo.update_layout(**lo, margin=dict(t=20, b=0))
-                    st.plotly_chart(fg_mo, width="stretch")
-                
-                d_pr = df_u['Producto_Afectado'].value_counts().reset_index().head(10)
-                fg_pr = px.bar(
-                    d_pr.sort_values('count', ascending=True), 
-                    x='count', y='Producto_Afectado', orientation='h', 
-                    color_discrete_sequence=['#ff6a00']
-                )
-                fg_pr.update_layout(**lo, margin=dict(t=20, b=0))
-                st.plotly_chart(fg_pr, width="stretch")
-
-        with t_s:
-            if df_u.empty:
-                st.warning("Sin datos SLA.")
-            else:
-                d_ab = df_u[df_u['Estado_Simplificado'] == 'Abierto']
-                
-                s1, s2, s3 = st.columns(3)
-                s1.metric("Abiertos", len(d_ab))
-                
-                atr = len(df_u[df_u['Estado_SLA'].str.contains('Atrasado', na=False)])
-                s2.metric("Atrasados", atr)
-                
-                pm = round(d_ab['Dias_Pendientes'].mean()) if len(d_ab) > 0 else 0
-                s3.metric("Promedio Dias", pm)
-                
-                c_s1, c_s2 = st.columns(2)
-                
-                with c_s1:
-                    cs = {
-                        'A Tiempo': '#39ff14', 
-                        'Atrasado': '#ff0000',
-                        'Cerrado': '#39ff14',
-                        'Pendiente': '#888888'
-                    }
-                    fg_s = px.pie(
-                        df_u, names='Estado_SLA', hole=0.3, 
-                        color='Estado_SLA', color_discrete_map=cs
-                    )
-                    fg_s.update_traces(textinfo='label+percent')
-                    fg_s.update_layout(**lo, margin=dict(t=20, b=0))
-                    st.plotly_chart(fg_s, width="stretch")
-
-                with c_s2:
-                    if not d_ab.empty:
-                        da = d_ab.groupby('Entidad_Grafico')['Dias_Pendientes']
-                        da = da.mean().reset_index()
-                        da = da.sort_values('Dias_Pendientes', ascending=False).head(10)
-                        
-                        f_ab = px.bar(
-                            da.sort_values('Dias_Pendientes', ascending=True), 
-                            x='Dias_Pendientes', y='Entidad_Grafico', 
-                            text='Dias_Pendientes', orientation='h', 
-                            color_discrete_sequence=['#ff0000']
-                        )
-                        f_ab.update_layout(**lo, margin=dict(t=20, b=0))
-                        st.plotly_chart(f_ab, width="stretch")
-                
-                cols_c = [
-                    'Incident Number', 'Entidad_Grafico', 
-                    'Producto_Afectado', 'Dias_Pendientes'
-                ]
-                dc = d_ab[cols_c].sort_values('Dias_Pendientes', ascending=False)
-                st.dataframe(dc, width="stretch", hide_index=True)
-
-with t_c:
-    if f_train is not None:
-        d_tr = procesar_capacitaciones(f_train)
-        if d_tr is not None and not d_tr.empty:
-            
-            d_mt = d_tr[['Mes_Num', 'Mes']].drop_duplicates()
-            d_mt = d_mt.sort_values('Mes_Num')
-            mt = d_mt['Mes'].tolist()
-            
-            s_mt = st.pills("Mes", options=mt, selection_mode="multi")
-            cu = d_tr['Curso'].unique()
-            s_cu = st.pills("Curso", options=cu, selection_mode="multi")
-            ru = d_tr['Relator'].unique()
-            s_ru = st.pills("Relator", options=ru, selection_mode="multi")
-            
-            v_mt = s_mt if s_mt else mt
-            v_cu = s_cu if s_cu else cu
-            v_ru = s_ru if s_ru else ru
-            
-            c1t = d_tr['Mes'].isin(v_mt)
-            c2t = d_tr['Curso'].isin(v_cu)
-            c3t = d_tr['Relator'].isin(v_ru)
-            
-            dtf = d_tr[c1t & c2t & c3t]
-            
-            if dtf.empty:
-                st.warning("Sin asistencias.")
-            else:
-                ts = dtf['Registro_Id'].nunique()
-                ta = len(dtf)
-                
-                k1, k2, k3 = st.columns(3)
-                k1.metric("Sesiones", ts)
-                k2.metric("Participantes", ta)
-                k3.metric("Promedio Asistentes", f"{(ta/ts if ts>0 else 0):.1f}")
-                
-                ct1, ct2 = st.columns(2)
-                with ct1:
-                    dr = dtf.groupby('Relator').agg(
-                        CR=('Registro_Id', 'nunique'), 
-                        TA=('Participante', 'count')
-                    ).reset_index().sort_values('TA', ascending=False)
-                    
-                    fr = px.bar(
-                        dr, x='Relator', y='TA', text='TA', 
-                        color_discrete_sequence=['#00f3ff']
-                    )
-                    fr.update_traces(textposition='outside')
-                    fr.update_layout(**lo, margin=dict(t=20, b=0))
-                    st.plotly_chart(fr, width="stretch")
-                    
-                with ct2:
-                    ds = dtf.groupby(['Fecha_Limpia', 'Curso', 'Relator']).agg(
-                        A=('Participante', 'count')
-                    ).reset_index().sort_values('Fecha_Limpia')
-                    
-                    def c_lb(r):
-                        f = str(r['Fecha_Limpia'])
-                        rl = str(r['Relator']).split()[0]
-                        return f"{f} ({rl})"
-                        
-                    ds['L'] = ds.apply(c_lb, axis=1)
-                    fs = px.bar(
-                        ds, x='L', y='A', text='A', 
-                        color_discrete_sequence=['#ff6a00']
-                    )
-                    fs.update_traces(textposition='outside')
-                    fs.update_layout(**lo, margin=dict(t=20, b=0))
-                    st.plotly_chart(fs, width="stretch")
-
-                ltr_raw = [str(x).strip() for x in dtf['Participante'].unique()]
-                ltr = sorted([x for x in ltr_raw if len(x)>2 and x.lower()!='nan'])
-                
-                tsel = st.selectbox("Trabajador:", ltr)
-                
-                if tsel:
-                    tc = set(dtf['Curso'].unique())
-                    ctr = set(dtf[dtf['Participante'] == tsel]['Curso'].unique())
-                    cf = tc - ctr
-                    
-                    cw1, cw2 = st.columns(2)
-                    with cw1:
-                        st.success(f"Realizados ({len(ctr)})")
-                        for c in sorted(list(ctr)): st.write(f"- {c}")
-                    with cw2:
-                        if len(cf) > 0:
-                            st.error(f"Pendientes ({len(cf)})")
-                            for c in sorted(list(cf)): st.write(f"- {c}")
-                        else: st.info("Al dia!")
-
-                mb = (pd.crosstab(dtf['Participante'], dtf['Curso']) > 0)
-                mi = mb.replace({True: "OK", False: "Falta"})
-                
-                tcol = len(mb.columns)
-                def cpct(r):
-                    return f"{(r.sum()/tcol*100):.1f}%"
-                    
-                mi.insert(0, 'Cumplimiento', mb.apply(cpct, axis=1))
-                st.dataframe(mi, width="stretch")
+            cm
