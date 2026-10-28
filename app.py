@@ -4,7 +4,8 @@ import plotly.express as px
 import os
 from datetime import datetime
 
-st.set_page_config(page_title="Dashboard Integral", layout="wide")
+# --- CONFIGURACION ---
+st.set_page_config(page_title="Dashboard", layout="wide")
 
 st.markdown("""
 <style>
@@ -17,47 +18,55 @@ h1, h2, h3, h4 { color: #ff6a00 !important; }
 [data-testid="stMetricLabel"] { color: #00f3ff !important; }
 hr { border-bottom: 1px solid #ff6a00; }
 .stAlert { background-color: #111827; border: 1px solid #ff6a00; }
-div[data-testid="stPills"] button { background-color: #ffffff !important; border: 1px solid #d1d5db !important; }
-div[data-testid="stPills"] button p { color: #000000 !important; font-weight: 800 !important; }
-div[data-testid="stPills"] button[aria-pressed="true"] { background-color: #ff0000 !important; }
-div[data-testid="stPills"] button[aria-pressed="true"] p { color: #ffffff !important; }
+div[data-testid="stPills"] button { 
+    background-color: #ffffff !important; 
+    border: 1px solid #d1d5db !important; 
+}
+div[data-testid="stPills"] button p { 
+    color: #000000 !important; font-weight: 800 !important; 
+}
+div[data-testid="stPills"] button[aria-pressed="true"] { 
+    background-color: #ff0000 !important; 
+}
+div[data-testid="stPills"] button[aria-pressed="true"] p { 
+    color: #ffffff !important; 
+}
 </style>
 """, unsafe_allow_html=True)
 
-col_logo, col_tit = st.columns([1, 10])
-with col_logo:
-    if os.path.exists("LOGO.webp"):
-        st.image("LOGO.webp", width="stretch")
-with col_tit:
+c_logo, c_tit = st.columns([1, 10])
+with c_logo:
+    if os.path.exists("LOGO.webp"): st.image("LOGO.webp", width="stretch")
+with c_tit:
     st.title("Dashboard Integral - Tribu Food")
 st.markdown("---")
 
 c_up1, c_up2 = st.columns(2)
-with c_up1:
-    f_capa = st.file_uploader("Reclamos SFS", type=['xlsx', 'xls'])
-with c_up2:
-    f_train = st.file_uploader("Capacitaciones", type=['xlsx', 'xls'])
+with c_up1: f_capa = st.file_uploader("Reclamos", type=['xlsx', 'xls'])
+with c_up2: f_train = st.file_uploader("Capacitaciones", type=['xlsx', 'xls'])
 
 @st.cache_data(show_spinner=False)
 def procesar_sfs(file):
     try:
         df = pd.read_excel(file)
-        if 'Número de Incidente' in df.columns and 'Incident Number' not in df.columns:
-            df.rename(columns={'Número de Incidente': 'Incident Number'}, inplace=True)
-        if 'Fecha de finalización' in df.columns and 'Fecha de Finalización' not in df.columns:
-            df.rename(columns={'Fecha de finalización': 'Fecha de Finalización'}, inplace=True)
+        if 'Número de Incidente' in df.columns:
+            if 'Incident Number' not in df.columns:
+                df.rename(columns={'Número de Incidente': 'Incident Number'}, inplace=True)
+        if 'Fecha de finalización' in df.columns:
+            if 'Fecha de Finalización' not in df.columns:
+                df.rename(columns={'Fecha de finalización': 'Fecha de Finalización'}, inplace=True)
         
-        c_base = ['Incident Number', 'Recibido De', 'Organización', 'Investigador Asignado']
-        c_base.extend(['Nombre del Material de Empaque', 'Nombre de la Materia Prima', 'Product Name'])
-        c_base.extend(['Nombre del Trabajo en Progreso', 'Código de Lote', 'Descripción', 'Fecha de Creación'])
-        c_base.extend(['Fecha Límite de Finalización', 'Fecha Límite de la Investigación', 'Fecha de Finalización'])
-        
+        c_base = [
+            'Incident Number', 'Recibido De', 'Organización', 'Investigador Asignado', 
+            'Nombre del Material de Empaque', 'Nombre de la Materia Prima', 'Product Name', 
+            'Nombre del Trabajo en Progreso', 'Código de Lote', 'Descripción', 
+            'Fecha de Creación', 'Fecha Límite de Finalización', 
+            'Fecha Límite de la Investigación', 'Fecha de Finalización'
+        ]
         for c in c_base:
-            if c not in df.columns:
-                df[c] = ''
+            if c not in df.columns: df[c] = ''
             
         df['Incident Number'] = df['Incident Number'].fillna('Sin Folio').astype(str).str.strip()
-        
         meses = {1:'Ene', 2:'Feb', 3:'Mar', 4:'Abr', 5:'May', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dic'}
         
         fd = pd.to_datetime(df['Fecha de Creación'], errors='coerce')
@@ -71,9 +80,19 @@ def procesar_sfs(file):
         df['Investigador Asignado'] = df['Investigador Asignado'].fillna('')
         df['Código de Lote'] = df['Código de Lote'].fillna('')
 
-        df['Origen_Clasificado'] = df['Recibido De'].apply(lambda x: str(x).strip().capitalize() if str(x).strip() != '' else 'Interno')
-        df['Entidad_Asociada'] = df['Organización'].apply(lambda x: str(x).strip() if str(x).strip() != '' else 'No Especificado')
-        df['Entidad_Grafico'] = df.apply(lambda r: r['Investigador Asignado'] if r['Origen_Clasificado'] == 'Proveedor' else r['Entidad_Asociada'], axis=1)
+        def f_ori(x):
+            v = str(x).strip()
+            return v.capitalize() if v != '' else 'Interno'
+        df['Origen_Clasificado'] = df['Recibido De'].apply(f_ori)
+
+        def f_ent(x):
+            v = str(x).strip()
+            return v if v != '' else 'No Especificado'
+        df['Entidad_Asociada'] = df['Organización'].apply(f_ent)
+
+        def f_eg(r):
+            return r['Investigador Asignado'] if r['Origen_Clasificado'] == 'Proveedor' else r['Entidad_Asociada']
+        df['Entidad_Grafico'] = df.apply(f_eg, axis=1)
 
         c_tipo = 'Tipo de Incidente' if 'Tipo de Incidente' in df.columns else 'Categoría del Incidente'
         if c_tipo in df.columns:
@@ -88,14 +107,17 @@ def procesar_sfs(file):
 
         lim_col = 'Fecha Límite de Finalización'
         ul = df[lim_col].astype(str).str.strip().nunique() if lim_col in df.columns else 0
-        if ul <= 1:
-            lim_col = 'Fecha Límite de la Investigación'
+        if ul <= 1: lim_col = 'Fecha Límite de la Investigación'
         
         df['F_Lim'] = pd.to_datetime(df[lim_col], errors='coerce')
         df['F_Cie'] = pd.to_datetime(df['Fecha de Finalización'], errors='coerce')
         hoy = pd.to_datetime(datetime.today())
         
-        df['Dias_Pendientes'] = df.apply(lambda r: (hoy - r['Fecha_Real']).days if (r['Estado_Simplificado'] == 'Abierto' and pd.notna(r['Fecha_Real'])) else 0, axis=1)
+        def c_dias(r):
+            if r['Estado_Simplificado'] == 'Abierto' and pd.notna(r['Fecha_Real']):
+                return (hoy - r['Fecha_Real']).days
+            return 0
+        df['Dias_Pendientes'] = df.apply(c_dias, axis=1)
 
         def c_sla(r):
             if r['Estado_Simplificado'] == 'Cerrado':
@@ -120,12 +142,8 @@ def procesar_sfs(file):
                 if p in desc: return p.title()
             return 'No Especificado'
 
-        def a_lote(r):
-            l = str(r['Código de Lote']).replace('nan', '').strip()
-            return l if (r['Clasificacion_General'] == 'Inocuidad' and l != '') else ('Sin Lote' if r['Clasificacion_General'] == 'Inocuidad' else '-')
-
         df['Producto_Afectado'] = df.apply(a_prod, axis=1)
-        df['Lote_Materia_Prima'] = df.apply(a_lote, axis=1)
+        df['Lote_Materia_Prima'] = df.apply(lambda r: str(r['Código de Lote']).replace('nan', '').strip() if (r['Clasificacion_General'] == 'Inocuidad' and str(r['Código de Lote']).replace('nan', '').strip() != '') else ('Sin Lote' if r['Clasificacion_General'] == 'Inocuidad' else '-'), axis=1)
         
         c_sub = 'Subcategoría del Incidente' if 'Subcategoría del Incidente' in df.columns else 'Subcategoría'
         c_cat = 'Categoría del Incidente' if 'Categoría del Incidente' in df.columns else 'Categoría'
@@ -133,7 +151,6 @@ def procesar_sfs(file):
         if c_cat not in df.columns: df[c_cat] = ''
         
         df['Causa_Raw'] = df[c_sub].replace('', pd.NA).fillna(df[c_cat]).fillna('No Definido')
-        
         dic_mot = {'bitter': 'Sabor Amargo', 'color': 'Problemas de Color', 'metal': 'Presencia de Metal', 'plastic': 'Presencia de Plástico'}
         df['Causa_Motivo'] = df['Causa_Raw'].apply(lambda x: dic_mot.get(str(x).strip().lower(), str(x).strip()))
         return df
@@ -145,9 +162,7 @@ def procesar_sfs(file):
 def procesar_capacitaciones(file):
     try:
         df = pd.read_excel(file)
-        if 'Nombre curso' not in df.columns:
-            df = pd.read_excel(file, skiprows=3)
-        
+        if 'Nombre curso' not in df.columns: df = pd.read_excel(file, skiprows=3)
         p_col = next((c for c in df.columns if 'participante' in c.lower()), None)
         df['Participante'] = df[p_col].astype(str).str.title() if p_col else 'Desconocido'
         df = df[~df['Participante'].isin(['Nan', 'None', '', 'Na', 'Nat', 'NaT'])]
@@ -180,10 +195,7 @@ if f_capa is not None:
     if df is not None and not df.empty:
         with t_g:
             f1, f2, f3, f4 = st.columns(4)
-            
-            dm = df[['Mes_Num', 'Mes']].drop_duplicates().sort_values('Mes_Num')
-            m_uni = dm['Mes'].tolist()
-            
+            m_uni = df[['Mes_Num', 'Mes']].drop_duplicates().sort_values('Mes_Num')['Mes'].tolist()
             f_m = f1.pills("Mes", options=m_uni, selection_mode="multi")
             f_o = f2.pills("Origen", options=df['Origen_Clasificado'].unique(), selection_mode="multi")
             f_c = f3.pills("Clase", options=df['Clasificacion_General'].unique(), selection_mode="multi")
@@ -212,16 +224,14 @@ if f_capa is not None:
             df_u = df_f.drop_duplicates(subset=['Incident Number'])
 
             k1, k2, k3 = st.columns(3)
-            t_u = len(df_u)
-            k1.metric("Hallazgos", t_u)
+            k1.metric("Hallazgos", len(df_u))
             t_cal = len(df_u[df_u['Clasificacion_General'] == 'Calidad'])
             t_ino = len(df_u[df_u['Clasificacion_General'] == 'Inocuidad'])
             k2.metric("Calidad / Inocuidad", str(t_cal) + " / " + str(t_ino))
-            tc = (len(df_u[df_u['Estado_Simplificado'] == 'Cerrado']) / t_u * 100) if t_u > 0 else 0
+            tc = (len(df_u[df_u['Estado_Simplificado'] == 'Cerrado']) / len(df_u) * 100) if len(df_u) > 0 else 0
             k3.metric("Tasa Cierre", str(round(tc, 1)) + "%")
             
-            cm = ['Incident Number', 'Fecha', 'Mes', 'Origen_Clasificado', 'Entidad_Asociada']
-            cm.extend(['Investigador Asignado', 'Producto_Afectado', 'Lote_Materia_Prima', 'Causa_Motivo', 'Estado_SLA'])
+            cm = ['Incident Number', 'Fecha', 'Mes', 'Origen_Clasificado', 'Entidad_Asociada', 'Investigador Asignado', 'Producto_Afectado', 'Lote_Materia_Prima', 'Causa_Motivo', 'Estado_SLA']
             st.dataframe(df_u[cm], width="stretch", hide_index=True)
             
             with st.expander("Ver Historial Completo"):
@@ -229,8 +239,7 @@ if f_capa is not None:
                 st.dataframe(df_f[cc], width="stretch", hide_index=True)
 
         with t_a:
-            if df_u.empty:
-                st.warning("Sin datos.")
+            if df_u.empty: st.warning("Sin datos.")
             else:
                 d_m = df_u.groupby(['Mes_Num', 'Mes']).size().reset_index(name='C').sort_values('Mes_Num')
                 fg_m = px.bar(d_m, x='Mes', y='C', text='C', color_discrete_sequence=['#00f3ff'])
@@ -256,8 +265,7 @@ if f_capa is not None:
                 st.plotly_chart(fg_pr, width="stretch")
 
         with t_s:
-            if df_u.empty:
-                st.warning("Sin datos SLA.")
+            if df_u.empty: st.warning("Sin datos SLA.")
             else:
                 d_ab = df_u[df_u['Estado_Simplificado'] == 'Abierto']
                 s1, s2, s3 = st.columns(3)
@@ -272,7 +280,6 @@ if f_capa is not None:
                     fg_s.update_traces(textinfo='label+percent')
                     fg_s.update_layout(**lo, margin=dict(t=20, b=0))
                     st.plotly_chart(fg_s, width="stretch")
-
                 with c_s2:
                     if not d_ab.empty:
                         da = d_ab.groupby('Entidad_Grafico')['Dias_Pendientes'].mean().reset_index().sort_values('Dias_Pendientes', ascending=False).head(10)
@@ -280,8 +287,7 @@ if f_capa is not None:
                         f_ab.update_layout(**lo, margin=dict(t=20, b=0))
                         st.plotly_chart(f_ab, width="stretch")
                 
-                cols_c = ['Incident Number', 'Entidad_Grafico', 'Producto_Afectado', 'Dias_Pendientes']
-                st.dataframe(d_ab[cols_c].sort_values('Dias_Pendientes', ascending=False), width="stretch", hide_index=True)
+                st.dataframe(d_ab[['Incident Number', 'Entidad_Grafico', 'Producto_Afectado', 'Dias_Pendientes']].sort_values('Dias_Pendientes', ascending=False), width="stretch", hide_index=True)
 
 with t_c:
     if f_train is not None:
@@ -296,8 +302,7 @@ with t_c:
             
             dtf = d_tr[(d_tr['Mes'].isin(s_mt if s_mt else mt)) & (d_tr['Curso'].isin(s_cu if s_cu else cu)) & (d_tr['Relator'].isin(s_ru if s_ru else ru))]
             
-            if dtf.empty:
-                st.warning("Sin asistencias.")
+            if dtf.empty: st.warning("Sin asistencias.")
             else:
                 ts = dtf['Registro_Id'].nunique()
                 ta = len(dtf)
@@ -313,7 +318,6 @@ with t_c:
                     fr.update_traces(textposition='outside')
                     fr.update_layout(**lo, margin=dict(t=20, b=0))
                     st.plotly_chart(fr, width="stretch")
-                    
                 with ct2:
                     ds = dtf.groupby(['Fecha_Limpia', 'Curso', 'Relator']).agg(A=('Participante', 'count')).reset_index().sort_values('Fecha_Limpia')
                     ds['L'] = ds.apply(lambda r: f"{r['Fecha_Limpia']} ({str(r['Relator']).split()[0]})", axis=1)
@@ -328,4 +332,19 @@ with t_c:
                 if tsel:
                     tc = set(dtf['Curso'].unique())
                     ctr = set(dtf[dtf['Participante'] == tsel]['Curso'].unique())
-                    cf
+                    cf = tc - ctr
+                    cw1, cw2 = st.columns(2)
+                    with cw1:
+                        st.success(f"Realizados ({len(ctr)})")
+                        for c in sorted(list(ctr)): st.write(f"- {c}")
+                    with cw2:
+                        if len(cf) > 0:
+                            st.error(f"Pendientes ({len(cf)})")
+                            for c in sorted(list(cf)): st.write(f"- {c}")
+                        else: st.info("Al dia!")
+
+                mb = (pd.crosstab(dtf['Participante'], dtf['Curso']) > 0)
+                mi = mb.replace({True: "OK", False: "Falta"})
+                tcol = len(mb.columns)
+                mi.insert(0, 'Cumpl', mb.apply(lambda r: str(round((r.sum()/tcol)*100, 1)) + "%", axis=1))
+                st.dataframe(mi, width="stretch")
