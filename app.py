@@ -56,14 +56,12 @@ def procesar_sfs(file):
     try:
         df = pd.read_excel(file)
         
-        # --- AUTO-RENOMBRADO PARA COMPATIBILIDAD DE VERSIONES SFS ---
+        # Auto-Renombrado
         if 'Número de Incidente' in df.columns and 'Incident Number' not in df.columns:
             df.rename(columns={'Número de Incidente': 'Incident Number'}, inplace=True)
-            
         if 'Fecha de finalización' in df.columns and 'Fecha de Finalización' not in df.columns:
             df.rename(columns={'Fecha de finalización': 'Fecha de Finalización'}, inplace=True)
-        # -------------------------------------------------------------
-        
+            
         c_base = [
             'Incident Number', 'Recibido De', 'Organización', 
             'Investigador Asignado', 'Nombre del Material de Empaque', 
@@ -74,7 +72,6 @@ def procesar_sfs(file):
             'Fecha Límite de la Investigación', 
             'Fecha de Finalización'
         ]
-        
         for c in c_base:
             if c not in df.columns: 
                 df[c] = ''
@@ -265,15 +262,11 @@ def procesar_capacitaciones(file):
         st.error(f"Error Cap: {e}")
         return None
 
-lo = {
-    "template": "plotly_dark", 
-    "paper_bgcolor": "rgba(0,0,0,0)", 
-    "plot_bgcolor": "rgba(0,0,0,0)", 
-    "font": {"color": "#e2e8f0"}
-}
-
 t_g, t_a, t_s, t_c = st.tabs([
-    "Global", "Graficos", "SLA", "Capacitaciones"
+    "Vision Global (Reclamos)", 
+    "Analisis Grafico (Reclamos)", 
+    "Seguimiento (SLA)", 
+    "Capacitaciones (Calidad)"
 ])
 
 if f_capa is not None:
@@ -282,25 +275,18 @@ if f_capa is not None:
         with t_g:
             f1, f2, f3, f4 = st.columns(4)
             
-            dm = df[['Mes_Num', 'Mes']].drop_duplicates()
-            dm = dm.sort_values('Mes_Num')
+            dm = df[['Mes_Num', 'Mes']].drop_duplicates().sort_values('Mes_Num')
             m_uni = dm['Mes'].tolist()
             
             f_mes = f1.pills("Mes", options=m_uni, selection_mode="multi")
-            
-            o_uni = df['Origen_Clasificado'].unique()
-            f_ori = f2.pills("Origen", options=o_uni, selection_mode="multi")
-            
-            c_uni = df['Clasificacion_General'].unique()
-            f_cla = f3.pills("Clase", options=c_uni, selection_mode="multi")
-            
-            e_uni = df['Estado_Simplificado'].unique()
-            f_est = f4.pills("Estado", options=e_uni, selection_mode="multi")
+            f_ori = f2.pills("Origen", options=df['Origen_Clasificado'].unique(), selection_mode="multi")
+            f_cla = f3.pills("Clase", options=df['Clasificacion_General'].unique(), selection_mode="multi")
+            f_est = f4.pills("Estado", options=df['Estado_Simplificado'].unique(), selection_mode="multi")
             
             v_mes = f_mes if f_mes else m_uni
-            v_ori = f_ori if f_ori else o_uni
-            v_cla = f_cla if f_cla else c_uni
-            v_est = f_est if f_est else e_uni
+            v_ori = f_ori if f_ori else df['Origen_Clasificado'].unique()
+            v_cla = f_cla if f_cla else df['Clasificacion_General'].unique()
+            v_est = f_est if f_est else df['Estado_Simplificado'].unique()
             
             c1 = df['Mes'].isin(v_mes)
             c2 = df['Origen_Clasificado'].isin(v_ori)
@@ -311,6 +297,7 @@ if f_capa is not None:
 
             s_inv, s_cli = [], []
             if 'Proveedor' in v_ori or 'Cliente' in v_ori:
+                st.markdown("#### Sub-Filtros Dinamicos")
                 if 'Proveedor' in v_ori:
                     i_r = df_t[df_t['Origen_Clasificado'] == 'Proveedor']
                     i_o = [x for x in i_r['Investigador Asignado'].unique() if x]
@@ -325,13 +312,11 @@ if f_capa is not None:
             df_f = df_t.copy()
             
             if s_inv: 
-                cp = (df_f['Origen_Clasificado'] == 'Proveedor')
-                cp = cp & (~df_f['Investigador Asignado'].isin(s_inv))
+                cp = (df_f['Origen_Clasificado'] == 'Proveedor') & (~df_f['Investigador Asignado'].isin(s_inv))
                 df_f = df_f[~cp]
                 
             if s_cli: 
-                cc = (df_f['Origen_Clasificado'] == 'Cliente')
-                cc = cc & (~df_f['Entidad_Asociada'].isin(s_cli))
+                cc = (df_f['Origen_Clasificado'] == 'Cliente') & (~df_f['Entidad_Asociada'].isin(s_cli))
                 df_f = df_f[~cc]
 
             df_u = df_f.drop_duplicates(subset=['Incident Number'])
@@ -339,14 +324,8 @@ if f_capa is not None:
             k1, k2, k3 = st.columns(3)
             
             t_u = len(df_u)
-            k1.metric("Hallazgos", t_u)
+            k1.metric("Hallazgos (Unicos)", t_u)
             
             t_cal = len(df_u[df_u['Clasificacion_General'] == 'Calidad'])
             t_ino = len(df_u[df_u['Clasificacion_General'] == 'Inocuidad'])
-            k2.metric("Calidad / Inocuidad", f"{t_cal} / {t_ino}")
-            
-            t_cer = len(df_u[df_u['Estado_Simplificado'] == 'Cerrado'])
-            tc = (t_cer / t_u * 100) if t_u > 0 else 0
-            k3.metric("Tasa Cierre", f"{tc:.1f}%")
-            
-            cm
+            k2.metric("Calidad / Inocuidad",
